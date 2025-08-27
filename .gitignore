@@ -28,9 +28,7 @@ venv/
 env/
 ENV/
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
+
 
 # Data files
 data/raw/*.csv
