@@ -15,8 +15,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام كامل",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -34,8 +33,7 @@
     "benefits":"['Salary','30000']",
     "contract":"دوام كامل",
     "exper":"3 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -53,8 +51,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"5 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -72,8 +69,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -91,8 +87,7 @@
     "benefits":"['Salary','20000']",
     "contract":"عقد مؤقت",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -110,8 +105,7 @@
     "benefits":"['Salary','10000']",
     "contract":"دوام كامل",
     "exper":"3 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -129,8 +123,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -148,8 +141,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -167,8 +159,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام جزئي",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -186,8 +177,7 @@
     "benefits":"['Salary','10000']",
     "contract":"عقد مؤقت",
     "exper":"3 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -205,8 +195,7 @@
     "benefits":"['Salary','30000']",
     "contract":"دوام جزئي",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -224,8 +213,7 @@
     "benefits":"['Salary','10000']",
     "contract":"دوام جزئي",
     "exper":"3 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -243,8 +231,7 @@
     "benefits":"['Salary','15000']",
     "contract":"عقد مؤقت",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -262,8 +249,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"5 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -281,8 +267,7 @@
     "benefits":"['Salary','20000']",
     "contract":"عقد مؤقت",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -300,8 +285,7 @@
     "benefits":"['Salary','10000']",
     "contract":"عقد مؤقت",
     "exper":"1 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -319,8 +303,7 @@
     "benefits":"['Salary','30000']",
     "contract":"دوام جزئي",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -338,8 +321,7 @@
     "benefits":"['Salary','10000']",
     "contract":"عقد مؤقت",
     "exper":"0 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -357,8 +339,7 @@
     "benefits":"['Salary','15000']",
     "contract":"عقد مؤقت",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -376,8 +357,7 @@
     "benefits":"['Salary','10000']",
     "contract":"عقد مؤقت",
     "exper":"1 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -395,8 +375,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام جزئي",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -414,8 +393,7 @@
     "benefits":"['Salary','20000']",
     "contract":"عقد مؤقت",
     "exper":"1 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -433,8 +411,7 @@
     "benefits":"['Salary','30000']",
     "contract":"دوام كامل",
     "exper":"5 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -452,8 +429,7 @@
     "benefits":"['Salary','30000']",
     "contract":"دوام جزئي",
     "exper":"3 Years",
-    "gender":"M",
-    "type":"Fake"
+    "gender":"M"
   },
   {
     "fraudulent":1,
@@ -471,8 +447,7 @@
     "benefits":"['Salary','15000']",
     "contract":"عقد مؤقت",
     "exper":"5 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -490,8 +465,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام جزئي",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -509,8 +483,7 @@
     "benefits":"['Salary','20000']",
     "contract":"عقد مؤقت",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -528,8 +501,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -547,8 +519,7 @@
     "benefits":"['Salary','12000']",
     "contract":"دوام جزئي",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -566,8 +537,7 @@
     "benefits":"['Salary','15000']",
     "contract":"عقد مؤقت",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -585,8 +555,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -604,8 +573,7 @@
     "benefits":"['Salary','12000']",
     "contract":"دوام جزئي",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -623,8 +591,7 @@
     "benefits":"['Salary','12000']",
     "contract":"عقد مؤقت",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -642,8 +609,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -661,8 +627,7 @@
     "benefits":"['Salary','12000']",
     "contract":"دوام جزئي",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -680,8 +645,7 @@
     "benefits":"['Salary','18000']",
     "contract":"دوام جزئي",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -699,8 +663,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام جزئي",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -718,8 +681,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام جزئي",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -737,8 +699,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام جزئي",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -756,8 +717,7 @@
     "benefits":"['Salary','20000']",
     "contract":"عقد مؤقت",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -775,8 +735,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -794,8 +753,7 @@
     "benefits":"['Salary','15000']",
     "contract":"عقد مؤقت",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -813,8 +771,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"0 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -832,8 +789,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -851,8 +807,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -870,8 +825,7 @@
     "benefits":"['Salary','15000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -889,8 +843,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام كامل",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -908,8 +861,7 @@
     "benefits":"['Salary','20000']",
     "contract":"عقد مؤقت",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -927,8 +879,7 @@
     "benefits":"['Salary','20000']",
     "contract":"دوام كامل",
     "exper":"3 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   },
   {
     "fraudulent":1,
@@ -946,7 +897,6 @@
     "benefits":"['Salary','12000']",
     "contract":"عقد مؤقت",
     "exper":"1 Years",
-    "gender":"F",
-    "type":"Fake"
+    "gender":"F"
   }
 ]
