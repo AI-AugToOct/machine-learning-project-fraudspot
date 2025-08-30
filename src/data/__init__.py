@@ -1,24 +1,16 @@
 """
-Data Pipeline Module
 
-This module handles data loading, preprocessing, and exploratory data analysis
-for the fraud detection system.
-
- Version: 1.0.0
+Version: 3.0.0 - DRY Consolidation
+IMPORTANT: This module now serves as a bridge to core modules.
 """
 
-from .data_loader import load_training_data, load_fraud_dataset, combine_datasets
-from .preprocessing import clean_dataset, encode_categorical_features, handle_missing_values
-from .eda import generate_eda_report, analyze_fraud_patterns, plot_feature_distributions
+# Import from core modules (single source of truth)
+from ..core import DataProcessor, FeatureEngine
+from .data_loader import load_training_data
+
 
 __all__ = [
     'load_training_data',
-    'load_fraud_dataset', 
-    'combine_datasets',
-    'clean_dataset',
-    'encode_categorical_features',
-    'handle_missing_values',
-    'generate_eda_report',
-    'analyze_fraud_patterns',
-    'plot_feature_distributions'
+    'DataProcessor',
+    'FeatureEngine',
 ]

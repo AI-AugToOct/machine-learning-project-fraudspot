@@ -15,7 +15,7 @@ __author__ = "Tuwaiq ML Bootcamp"
 __description__ = "Job Post Fraud Detector - ML-powered fraud detection for job postings"
 
 # Package-level imports for easy access
-from .config import *
+from .core.constants import *
 
 __all__ = [
     '__version__',

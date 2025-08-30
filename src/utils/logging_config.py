@@ -7,14 +7,14 @@ with proper formatting, file rotation, and log level management.
  Version: 1.0.0
 """
 
-import os
-import time
 import logging
 import logging.handlers
-from typing import Dict, Any, Optional
+import os
+import time
 from datetime import datetime
+from typing import Any, Dict, Optional
 
-from ..config import LOGGING_CONFIG
+from ..core.constants import UtilityConstants
 
 
 def setup_logging(config: Optional[Dict[str, Any]] = None) -> None:
@@ -32,7 +32,7 @@ def setup_logging(config: Optional[Dict[str, Any]] = None) -> None:
         - Create log directory if needed
     """
     if config is None:
-        config = LOGGING_CONFIG
+        config = UtilityConstants.LOGGING_CONFIG
     
     try:
         # Clear any existing handlers
@@ -126,8 +126,8 @@ def create_file_handler(log_file: str, level: str = 'INFO') -> logging.Handler:
         # Create rotating file handler
         file_handler = logging.handlers.RotatingFileHandler(
             log_file,
-            maxBytes=LOGGING_CONFIG.get('max_bytes', 10485760),  # 10MB default
-            backupCount=LOGGING_CONFIG.get('backup_count', 5),
+            maxBytes=UtilityConstants.LOGGING_CONFIG.get('max_bytes', 10485760),  # 10MB default
+            backupCount=UtilityConstants.LOGGING_CONFIG.get('backup_count', 5),
             encoding='utf-8'
         )
         
@@ -137,7 +137,7 @@ def create_file_handler(log_file: str, level: str = 'INFO') -> logging.Handler:
         
         # Create formatter
         formatter = logging.Formatter(
-            fmt=LOGGING_CONFIG.get('format', 
+            fmt=UtilityConstants.LOGGING_CONFIG.get('format', 
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s'),
             datefmt='%Y-%m-%d %H:%M:%S'
         )
@@ -297,7 +297,7 @@ def log_error_with_context(error: Exception, context: Dict[str, Any] = None,
     
     try:
         import traceback
-        
+
         # Create error context
         error_context = {
             'error_type': type(error).__name__,
@@ -354,7 +354,7 @@ def create_audit_log(action: str, user_id: str = None,
         
         # Set up audit file handler if not exists
         if not audit_logger.handlers:
-            audit_file = LOGGING_CONFIG.get('audit_log_file', 'logs/audit.log')
+            audit_file = UtilityConstants.LOGGING_CONFIG.get('audit_log_file', 'logs/audit.log')
             os.makedirs(os.path.dirname(audit_file), exist_ok=True)
             
             audit_handler = logging.handlers.RotatingFileHandler(
@@ -407,7 +407,7 @@ def setup_request_logging() -> None:
         request_logger = logging.getLogger('requests')
         
         if not request_logger.handlers:
-            request_file = LOGGING_CONFIG.get('request_log_file', 'logs/requests.log')
+            request_file = UtilityConstants.LOGGING_CONFIG.get('request_log_file', 'logs/requests.log')
             os.makedirs(os.path.dirname(request_file), exist_ok=True)
             
             request_handler = logging.handlers.RotatingFileHandler(
@@ -456,7 +456,7 @@ def cleanup_old_logs(days_to_keep: int = 30) -> int:
     files_cleaned = 0
     
     try:
-        log_file = LOGGING_CONFIG.get('log_file')
+        log_file = UtilityConstants.LOGGING_CONFIG.get('log_file')
         if not log_file:
             logger.info("No log file configured for cleanup")
             return 0
@@ -575,7 +575,7 @@ def get_logging_stats() -> Dict[str, Any]:
             stats['handlers'].append(handler_info)
         
         # Get log file information
-        log_file = LOGGING_CONFIG.get('log_file')
+        log_file = UtilityConstants.LOGGING_CONFIG.get('log_file')
         if log_file and os.path.exists(log_file):
             try:
                 stats['log_files']['main'] = {

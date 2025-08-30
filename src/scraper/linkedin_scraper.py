@@ -1,145 +1,807 @@
 """
-LinkedIn Job Scraper - Complete Implementation
+LinkedIn Job Scraper - Single Source Implementation
 
 This module provides comprehensive functionality for scraping LinkedIn job postings
-and extracting all relevant information for fraud detection analysis.
+using Bright Data's professional APIs for maximum fraud detection capabilities.
 
 Key Features:
-- Complete job posting extraction from LinkedIn URLs
-- Dynamic content handling with Selenium
-- Anti-bot detection and mitigation
-- Comprehensive data extraction and validation
-- Rate limiting and retry mechanisms
+- Complete job posting extraction with 50+ structured data points
+- Comprehensive job poster profile analysis
+- Company verification and legitimacy scoring
+- Advanced fraud detection algorithms
+- Professional API integration with structured JSON data
+- Real-time data with no HTML parsing overhead
 
-Version: 2.0.0 - Production Ready
+Version: 4.0.0 - DRY Consolidation - Single Source of Truth
 """
 
-import re
-import time
 import json
 import logging
-from typing import Dict, List, Optional, Any, Tuple
-from urllib.parse import urlparse, parse_qs
+import os
+import re
+import time
 from datetime import datetime, timedelta
-import requests
-from bs4 import BeautifulSoup, Tag
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote, urlparse
 
-from ..config import (
-    LINKEDIN_URL_PATTERNS, DEFAULT_HEADERS, SCRAPING_CONFIG,
-    SUSPICIOUS_KEYWORDS, SUSPICIOUS_EMAIL_DOMAINS
-)
-from .scraper_utils import (
-    setup_session, handle_rate_limiting, retry_request,
-    clean_scraped_text, detect_anti_bot_measures, setup_selenium_driver
-)
+import requests
+
+# Import configuration
+from ..core.constants import BrightDataConstants, ScrapingConstants, get_bright_data_config
 
 logger = logging.getLogger(__name__)
 
 
-def scrape_job_posting(url: str) -> Dict[str, Any]:
+class BrightDataLinkedInScraper:
     """
-    Scrape a LinkedIn job posting and extract all relevant information.
+    Professional Bright Data LinkedIn scraper for comprehensive fraud detection.
     
-    This is the main function that orchestrates the entire scraping process.
-    It handles both static and dynamic content, extracts all job information,
-    and returns a structured dictionary of the scraped data.
+    This class provides structured access to LinkedIn data through Bright Data's
+    official APIs, extracting all available data points for maximum fraud detection
+    capabilities.
+    """
+    
+    def __init__(self, api_key: str = None):
+        """
+        Initialize the Bright Data LinkedIn scraper.
+        
+        Args:
+            api_key (str, optional): Bright Data API key. Uses config if not provided.
+        """
+        self.api_key = api_key or BrightDataConstants.CONFIG['api_key']
+        self.config = BrightDataConstants.CONFIG
+        
+        # Validate API key FIRST before setting up any session headers
+        if not self.api_key or self.api_key.strip() == '':
+            raise ValueError("Bright Data API key is required. Please set BD_API_KEY environment variable or pass api_key parameter.")
+        
+        self.session = requests.Session()
+        
+        # Set up authentication headers (only after API key validation passes)
+        self.session.headers.update({
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+            'User-Agent': 'FraudSpot-Detector/1.0'
+        })
+        
+        # Use correct trigger endpoint and dataset IDs from config
+        self.trigger_endpoint = self.config['trigger_endpoint']
+        self.dataset_ids = self.config['dataset_ids']
+        
+        # Rate limiting configuration
+        self.rate_limit_delay = self.config['rate_limit_delay']
+        self.last_request_time = 0
+        
+        # Validate configuration
+        if not self.trigger_endpoint:
+            raise ValueError("Bright Data trigger endpoint not configured properly")
+        
+        if not self.dataset_ids.get('jobs'):
+            raise ValueError("Bright Data jobs dataset ID not configured properly")
+        
+        logger.info(f"🚀 Bright Data LinkedIn Scraper initialized successfully")
+        logger.info(f"📡 Endpoint: {self.trigger_endpoint}")
+        logger.info(f"📊 Jobs Dataset ID: {self.dataset_ids['jobs']}")
+
+    def _wait_for_rate_limit(self):
+        """Implement rate limiting between requests."""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        
+        if time_since_last < self.rate_limit_delay:
+            sleep_time = self.rate_limit_delay - time_since_last
+            time.sleep(sleep_time)
+        
+        self.last_request_time = time.time()
+
+    def _make_request(self, dataset_id: str, url: str, timeout: int = 30) -> Dict[str, Any]:
+        """
+        Make a request to Bright Data API with proper error handling and timeout.
+        
+        Args:
+            dataset_id (str): Bright Data dataset ID for the LinkedIn data type
+            url (str): LinkedIn URL to scrape
+            timeout (int): Request timeout in seconds
+            
+        Returns:
+            Dict[str, Any]: API response data or error information
+        """
+        self._wait_for_rate_limit()
+        
+        # Correct Bright Data API format: array payload with dataset_id as URL parameter
+        payload = [{"url": url}]
+        api_url = f"{self.trigger_endpoint}?dataset_id={dataset_id}"
+        
+        try:
+            logger.info(f"🔄 Making Bright Data API request to: {api_url}")
+            logger.info(f"📊 Dataset: {dataset_id}, URL: {url}")
+            
+            response = self.session.post(
+                api_url,
+                json=payload,
+                timeout=timeout
+            )
+            
+            logger.info(f"📡 Response Status: {response.status_code}")
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                logger.info(f"✅ Bright Data API request successful")
+                
+                # Handle array response format - extract first item for jobs
+                if isinstance(response_data, list) and response_data:
+                    data = response_data[0]
+                elif isinstance(response_data, dict):
+                    data = response_data
+                else:
+                    logger.warning("⚠️ Unexpected response format from Bright Data API")
+                    data = response_data
+                
+                return {
+                    'success': True,
+                    'data': data,
+                    'status_code': response.status_code
+                }
+            elif response.status_code == 202:
+                # 202 Accepted - Async processing with snapshot_id
+                response_data = response.json()
+                logger.info(f"🔄 Bright Data API request accepted for async processing")
+                
+                return {
+                    'success': True,
+                    'data': response_data,  # Contains snapshot_id
+                    'status_code': response.status_code
+                }
+            else:
+                error_message = f"HTTP {response.status_code}: {response.text}"
+                logger.error(f"❌ Bright Data API error: {error_message}")
+                return {
+                    'success': False,
+                    'error': error_message,
+                    'status_code': response.status_code
+                }
+                
+        except requests.exceptions.Timeout:
+            error_message = f"Request timeout after {timeout} seconds"
+            logger.error(f"⏰ {error_message}")
+            return {'success': False, 'error': error_message, 'status_code': 408}
+            
+        except requests.exceptions.RequestException as e:
+            error_message = f"Request failed: {str(e)}"
+            logger.error(f"🔌 {error_message}")
+            return {'success': False, 'error': error_message, 'status_code': 0}
+        
+        except json.JSONDecodeError as e:
+            error_message = f"Invalid JSON response: {str(e)}"
+            logger.error(f"📝 {error_message}")
+            return {'success': False, 'error': error_message, 'status_code': response.status_code}
+        
+        except Exception as e:
+            error_message = f"Unexpected error: {str(e)}"
+            logger.error(f"💥 {error_message}")
+            return {'success': False, 'error': error_message, 'status_code': 500}
+
+    def _poll_for_snapshot(self, snapshot_id: str, dataset_id: str, max_attempts: int = 180, polling_interval: float = 10.0) -> Dict[str, Any]:
+        """
+        Poll for snapshot completion with fixed 10-second intervals as per Bright Data requirements.
+        Total timeout: 30 minutes (180 attempts * 10 seconds).
+        
+        Args:
+            snapshot_id (str): Snapshot ID from initial API response
+            dataset_id (str): Dataset ID for polling endpoint
+            max_attempts (int): Maximum polling attempts (default: 180 for 30 minutes)
+            polling_interval (float): Fixed polling interval in seconds (default: 10.0)
+            
+        Returns:
+            Dict[str, Any]: Final snapshot data or error information
+        """
+        # Correct Bright Data polling endpoint - v3 without dataset_id parameter
+        poll_url = f"https://api.brightdata.com/datasets/v3/snapshot/{snapshot_id}"
+        
+        for attempt in range(max_attempts):
+            try:
+                # Log polling attempt (first attempt is immediate)
+                logger.info(f"⏳ Polling attempt {attempt + 1}/{max_attempts}...")
+                
+                response = self.session.get(poll_url, timeout=30)
+                
+                if response.status_code == 200:
+                    snapshot_data = response.json()
+                    
+                    # Check if response contains actual profile data (ready snapshot)
+                    if isinstance(snapshot_data, dict) and ('name' in snapshot_data or 'linkedin_id' in snapshot_data):
+                        # Direct profile data response - snapshot is ready
+                        logger.info("📊 Snapshot ready - received profile data directly")
+                        return {
+                            'success': True,
+                            'data': snapshot_data,
+                            'status_code': 200
+                        }
+                    
+                    # Check for status-based response (old format)
+                    status = snapshot_data.get('status', 'unknown')
+                    logger.info(f"📊 Snapshot status: {status}")
+                    
+                    # Check for Bright Data completion status: 'ready' (official docs)
+                    if status == 'ready':
+                        # When ready, download the actual data using download endpoint
+                        download_url = f"https://api.brightdata.com/datasets/snapshots/{snapshot_id}/download"
+                        logger.info(f"📥 Snapshot ready - downloading from: {download_url}")
+                        
+                        download_response = self.session.get(download_url, timeout=60)
+                        if download_response.status_code == 200:
+                            try:
+                                download_data = download_response.json()
+                                # Handle download response format
+                                if isinstance(download_data, list) and download_data:
+                                    data = download_data
+                                elif isinstance(download_data, dict):
+                                    data = [download_data]
+                                else:
+                                    data = download_data
+                            except Exception as e:
+                                logger.error(f"❌ Failed to parse download response: {e}")
+                                return {'success': False, 'error': f'Download parse error: {e}', 'status_code': 500}
+                        else:
+                            logger.error(f"❌ Download failed: HTTP {download_response.status_code}")
+                            return {'success': False, 'error': f'Download failed: HTTP {download_response.status_code}', 'status_code': download_response.status_code}
+                        
+                        if data:
+                            # Handle different response formats
+                            profile_data = data[0] if isinstance(data, list) else data
+                            
+                            # Log the actual response format for debugging
+                            logger.info(f"📊 Profile response keys: {list(profile_data.keys()) if isinstance(profile_data, dict) else f'Type: {type(profile_data)}'}")
+                            
+                            # More detailed logging of the response structure
+                            if isinstance(profile_data, dict):
+                                logger.info(f"📊 Response has {len(profile_data)} keys: {list(profile_data.keys())[:10]}")  # First 10 keys
+                                # Accept any dictionary as valid profile data
+                                logger.info(f"✅ Snapshot {status} - data downloaded successfully")
+                                return {
+                                    'success': True,
+                                    'data': profile_data,
+                                    'status_code': 200
+                                }
+                            elif isinstance(profile_data, list):
+                                logger.info(f"📊 Response is list with {len(profile_data)} items")
+                                if profile_data:
+                                    first_item = profile_data[0]
+                                    if isinstance(first_item, dict):
+                                        logger.info("✅ Using first item from list as profile data")
+                                        return {
+                                            'success': True,
+                                            'data': first_item,
+                                            'status_code': 200
+                                        }
+                                logger.warning(f"⚠️ List format not usable: {profile_data[:2] if len(profile_data) > 2 else profile_data}")
+                                return {'success': False, 'error': f'Unusable list format with {len(profile_data)} items', 'status_code': 422}
+                            else:
+                                logger.warning(f"⚠️ Unexpected profile data format: {type(profile_data)}, content: {str(profile_data)[:200]}")
+                                return {'success': False, 'error': f'Unexpected profile data format: {type(profile_data)}', 'status_code': 422}
+                        else:
+                            logger.warning("⚠️ Snapshot completed but no data returned")
+                            return {'success': False, 'error': 'No data in completed snapshot', 'status_code': 204}
+                    
+                    elif status in ['failed', 'error']:
+                        error_msg = snapshot_data.get('error', 'Snapshot failed')
+                        logger.error(f"❌ Snapshot failed: {error_msg}")
+                        return {'success': False, 'error': error_msg, 'status_code': 500}
+                    
+                    elif status in ['collecting', 'building', 'running', 'pending', 'queued', 'processing']:
+                        # Continue polling - these are intermediate statuses from Bright Data docs
+                        if status == 'collecting':
+                            logger.info("🔄 Data collection in progress...")
+                        elif status == 'building':
+                            logger.info("🔨 Snapshot building, almost ready...")
+                        else:
+                            logger.info(f"⏳ Status: {status} - continuing to poll...")
+                        continue
+                    
+                    else:
+                        logger.warning(f"⚠️ Unknown snapshot status: {status}")
+                        continue
+                        
+                elif response.status_code == 202:
+                    # HTTP 202 Accepted - Still processing, continue polling
+                    logger.info("🔄 Snapshot still processing (HTTP 202) - continuing to poll...")
+                    # Continue with sleep at the end of loop
+                else:
+                    logger.warning(f"⚠️ Polling request failed: HTTP {response.status_code}")
+                    continue
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Polling attempt {attempt + 1} failed: {str(e)}")
+                
+            # Sleep between attempts (except the last one)
+            if attempt < max_attempts - 1:
+                time.sleep(polling_interval)
+        
+        # Max attempts reached
+        total_time = max_attempts * polling_interval
+        logger.error(f"❌ Polling timeout after {max_attempts} attempts ({total_time} seconds)")
+        return {'success': False, 'error': f'Polling timeout after {max_attempts} attempts ({total_time} seconds)', 'status_code': 408}
+
+    def _make_profile_request(self, dataset_id: str, url: str, timeout: int = 120) -> Dict[str, Any]:
+        """
+        Make a profile request that requires polling for snapshots.
+        
+        Args:
+            dataset_id (str): Bright Data profile dataset ID
+            url (str): LinkedIn profile URL to scrape
+            timeout (int): Request timeout in seconds
+            
+        Returns:
+            Dict[str, Any]: Profile data or error information
+        """
+        # Initial request to trigger profile snapshot
+        initial_result = self._make_request(dataset_id, url, timeout)
+        
+        if not initial_result.get('success'):
+            return initial_result
+        
+        response_data = initial_result.get('data', {})
+        
+        # Check if we got immediate data (some profiles) or snapshot ID (most profiles)
+        if isinstance(response_data, list) and response_data:
+            # Immediate response with data
+            logger.info("✅ Profile data received immediately")
+            return {
+                'success': True,
+                'data': response_data[0],
+                'status_code': 200
+            }
+        elif isinstance(response_data, dict) and response_data.get('snapshot_id'):
+            # Async response - need to poll
+            snapshot_id = response_data['snapshot_id']
+            logger.info(f"🔄 Profile snapshot triggered, ID: {snapshot_id}")
+            return self._poll_for_snapshot(snapshot_id, dataset_id)
+        else:
+            # Enhanced diagnostics for unexpected response format
+            logger.warning("⚠️ Unexpected profile response format")
+            
+            if isinstance(response_data, dict):
+                logger.info(f"📊 Response is dict with {len(response_data)} keys: {list(response_data.keys())[:10]}")
+                # Check for other possible structures
+                if 'data' in response_data:
+                    logger.info("📊 Response has 'data' key - checking nested structure")
+                    nested_data = response_data['data']
+                    if isinstance(nested_data, list) and nested_data:
+                        logger.info("📊 Found data in nested 'data' field, using first item")
+                        return {
+                            'success': True,
+                            'data': nested_data[0],
+                            'status_code': 200
+                        }
+                    elif isinstance(nested_data, dict):
+                        logger.info("📊 Found dict in nested 'data' field, using directly")
+                        return {
+                            'success': True,
+                            'data': nested_data,
+                            'status_code': 200
+                        }
+                
+                # Check if this might be the profile data itself (direct format)
+                # LinkedIn profile data indicators based on Bright Data documentation
+                linkedin_profile_fields = [
+                    'name', 'headline', 'profile_url', 'current_company', 'linkedin_id', 
+                    'position', 'about', 'experience', 'education', 'city', 'country_code',
+                    'profile_info', 'followers', 'connections', 'avatar', 'url'
+                ]
+                
+                if any(key in response_data for key in linkedin_profile_fields):
+                    logger.info(f"📊 Response appears to be profile data directly (found: {[k for k in linkedin_profile_fields if k in response_data][:5]})")
+                    return {
+                        'success': True,
+                        'data': response_data,
+                        'status_code': 200
+                    }
+                
+                # Check for error responses
+                if 'error' in response_data or 'status' in response_data:
+                    error_msg = response_data.get('error', 'API error')
+                    status = response_data.get('status', 'unknown')
+                    logger.warning(f"📊 API error response: {status} - {error_msg}")
+                    return {
+                        'success': False,
+                        'error': f"{status}: {error_msg}",
+                        'status_code': 422
+                    }
+                    
+            elif isinstance(response_data, list):
+                logger.info(f"📊 Response is list with {len(response_data)} items")
+                if response_data:
+                    logger.info("📊 Using first item from list")
+                    return {
+                        'success': True,
+                        'data': response_data[0],
+                        'status_code': 200
+                    }
+            else:
+                logger.info(f"📊 Response type: {type(response_data)}")
+                logger.info(f"📊 Response content (first 200 chars): {str(response_data)[:200]}")
+            
+            return {'success': False, 'error': 'Unexpected profile response format', 'status_code': 500}
+
+    def _extract_poster_profile_url(self, job_data: Dict[str, Any]) -> Optional[str]:
+        """Extract job poster profile URL from job data."""
+        # Check job_poster nested object first (Bright Data API structure)
+        job_poster = job_data.get('job_poster', {})
+        if isinstance(job_poster, dict):
+            poster_url = job_poster.get('url')
+            if poster_url and 'linkedin.com/in/' in str(poster_url):
+                return str(poster_url)
+        
+        # Try various fields where profile URL might be stored
+        profile_url_fields = [
+            'job_poster_profile_url',
+            'poster_profile_url', 
+            'hiring_manager_profile',
+            'recruiter_profile_url',
+            'contact_person_profile'
+        ]
+        
+        for field in profile_url_fields:
+            if field in job_data and job_data[field]:
+                url = job_data[field]
+                if 'linkedin.com/in/' in str(url):
+                    return str(url)
+        
+        # Try to extract from nested contact information
+        contact_info = job_data.get('contact_info', {})
+        if isinstance(contact_info, dict):
+            for key, value in contact_info.items():
+                if 'linkedin' in str(key).lower() and 'linkedin.com/in/' in str(value):
+                    return str(value)
+        
+        return None
+
+    def _combine_job_and_poster_data(self, job_data: Dict[str, Any], poster_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Combine job and poster data into unified structure."""
+        combined = {}
+        
+        # Job information
+        combined.update({
+            'job_title': job_data.get('job_title', ''),
+            'company_name': job_data.get('company_name', ''),
+            'job_description': job_data.get('job_description', ''),
+            'location': job_data.get('location', ''),
+            'salary_info': job_data.get('salary_info'),
+            'requirements': job_data.get('requirements', []),
+            'posted_date': job_data.get('posted_date'),
+            'applicant_count': job_data.get('applicant_count'),
+            'application_method': job_data.get('application_method', ''),
+            'job_type': job_data.get('job_type'),
+            'experience_level': job_data.get('experience_level'),
+            'industry': job_data.get('industry'),
+            'company_website': job_data.get('company_website'),
+            'company_size': job_data.get('company_size'),
+            'job_function': job_data.get('job_function'),
+            'seniority_level': job_data.get('seniority_level'),
+        })
+        
+        # Contact information
+        contact_info = job_data.get('contact_info', {})
+        combined.update({
+            'contact_info': contact_info,
+            'has_email': len(contact_info.get('emails', [])) > 0,
+            'has_phone': len(contact_info.get('phones', [])) > 0,
+            'has_whatsapp': len(contact_info.get('whatsapp', [])) > 0,
+            'has_telegram': len(contact_info.get('telegram', [])) > 0,
+        })
+        
+        # Poster information from job data
+        combined.update({
+            'job_poster_name': job_data.get('job_poster_name', ''),
+            'job_poster_current_title': job_data.get('job_poster_current_title', ''),
+            'job_poster_current_company': job_data.get('job_poster_current_company', ''),
+        })
+        
+        # Enhanced poster information from profile data
+        if poster_data:
+            combined.update({
+                'job_poster_headline': poster_data.get('headline', ''),
+                'job_poster_location': poster_data.get('location', ''),
+                'job_poster_summary': poster_data.get('summary', ''),
+                'job_poster_experiences': poster_data.get('experiences', []),
+                'job_poster_education': poster_data.get('education', []),
+                'job_poster_skills': poster_data.get('skills', []),
+                'job_poster_connections': poster_data.get('connections_count', 0),
+                'job_poster_followers': poster_data.get('followers_count', 0),
+                'job_poster_has_photo': 1 if poster_data.get('profile_picture_url') else 0,
+                'job_poster_is_verified': 1 if poster_data.get('is_verified', False) else 0,
+            })
+        else:
+            # Default values when no poster profile available
+            combined.update({
+                'job_poster_headline': '',
+                'job_poster_location': '',
+                'job_poster_summary': '',
+                'job_poster_experiences': [],
+                'job_poster_education': [],
+                'job_poster_skills': [],
+                'job_poster_connections': 0,
+                'job_poster_followers': 0,
+                'job_poster_has_photo': 0,
+                'job_poster_is_verified': 0,
+            })
+        
+        # Model compatibility fields
+        combined.update({
+            'poster_verified': combined.get('job_poster_is_verified', 0),
+            'poster_experience': len(combined.get('job_poster_experiences', [])),
+            'poster_photo': combined.get('job_poster_has_photo', 0),
+            'poster_active': 1 if combined.get('job_poster_connections', 0) > 0 else 0,
+        })
+        
+        return combined
+
+    def _calculate_fraud_detection_scores(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate comprehensive fraud detection scores."""
+        scores = {}
+        
+        # 1. Network Quality Score (0-1)
+        connections = data.get('job_poster_connections', 0)
+        experiences = len(data.get('job_poster_experiences', []))
+        education = len(data.get('job_poster_education', []))
+        
+        network_score = 0.0
+        if connections > 500:
+            network_score += 0.4
+        elif connections > 100:
+            network_score += 0.2
+        
+        if experiences > 3:
+            network_score += 0.3
+        elif experiences > 1:
+            network_score += 0.15
+        
+        if education > 0:
+            network_score += 0.3
+            
+        scores['network_quality_score'] = min(network_score, 1.0)
+        
+        # 2. Profile Completeness Score (0-1)
+        completeness_factors = [
+            bool(data.get('job_poster_name')),
+            bool(data.get('job_poster_current_title')),
+            bool(data.get('job_poster_headline')),
+            bool(data.get('job_poster_summary')),
+            bool(data.get('job_poster_has_photo')),
+            len(data.get('job_poster_experiences', [])) > 0,
+            len(data.get('job_poster_education', [])) > 0,
+            len(data.get('job_poster_skills', [])) > 0,
+        ]
+        
+        scores['profile_completeness_score'] = sum(completeness_factors) / len(completeness_factors)
+        
+        # 3. Company Legitimacy Score (0-1)
+        company_score = 0.5  # Neutral baseline
+        
+        if data.get('company_website'):
+            company_score += 0.2
+        if data.get('company_size'):
+            company_score += 0.15
+        if data.get('industry'):
+            company_score += 0.15
+            
+        scores['company_legitimacy_score'] = min(company_score, 1.0)
+        
+        # 4. Poster Credibility Score (0-1)
+        credibility_score = 0.0
+        
+        if data.get('job_poster_is_verified'):
+            credibility_score += 0.3
+        if data.get('job_poster_has_photo'):
+            credibility_score += 0.2
+        if connections > 50:
+            credibility_score += 0.25
+        if experiences > 2:
+            credibility_score += 0.25
+            
+        scores['poster_credibility_score'] = min(credibility_score, 1.0)
+        
+        # 5. Overall Fraud Risk Score (0-1, lower is better)
+        risk_factors = []
+        
+        # High risk factors
+        if not data.get('job_poster_name'):
+            risk_factors.append(0.3)
+        if not data.get('company_name'):
+            risk_factors.append(0.25)
+        if connections < 10:
+            risk_factors.append(0.2)
+        if not data.get('job_poster_has_photo'):
+            risk_factors.append(0.15)
+        if experiences == 0:
+            risk_factors.append(0.1)
+            
+        fraud_risk = sum(risk_factors)
+        scores['fraud_risk_score'] = min(fraud_risk, 1.0)
+        
+        return scores
+
+    def _create_error_response(self, error: str, url: str = None) -> Dict[str, Any]:
+        """Create standardized error response."""
+        return {
+            'success': False,
+            'error': error,
+            'url': url,
+            'scraped_at': datetime.now().isoformat(),
+            'scraping_method': 'bright_data_failed',
+            'data_source': 'bright_data_professional',
+            'api_version': '4.0.0'
+        }
+
+
+# MAIN PUBLIC FUNCTIONS
+
+def scrape_job(url: str) -> Dict[str, Any]:
+    """
+    Scrape ONLY job data - returns in 2-3 seconds without waiting for profile.
     
     Args:
         url (str): The LinkedIn job posting URL to scrape
         
     Returns:
-        Dict[str, Any]: Dictionary containing all extracted job information
-            {
-                'job_title': str,
-                'company_name': str,
-                'job_description': str,
-                'location': str,
-                'salary_info': Optional[str],
-                'requirements': List[str],
-                'contact_info': Dict[str, List[str]],
-                'posted_date': Optional[str],
-                'applicant_count': Optional[int],
-                'application_method': str,
-                'company_website': Optional[str],
-                'job_type': Optional[str],
-                'experience_level': Optional[str],
-                'industry': Optional[str],
-                'scraped_at': str,
-                'url': str,
-                'html_content': str,
-                'success': bool,
-                'error_message': Optional[str]
-            }
-            
-    Raises:
-        ValueError: If the URL is invalid
-        requests.RequestException: If network request fails
-        TimeoutException: If page loading times out
+        Dict[str, Any]: Dictionary containing job information with optional profile URL:
+            - Complete job details (title, description, requirements, salary)
+            - Company information (size, industry, verification)
+            - poster_profile_url: LinkedIn profile URL if found (for separate fetching)
+            - Job-only fraud detection scores
     """
-    logger.info(f"Starting to scrape job posting: {url}")
-    
-    # Initialize result structure
-    result = {
-        'url': url,
-        'scraped_at': datetime.now().isoformat(),
-        'success': False,
-        'error_message': None,
-        'job_title': '',
-        'company_name': '',
-        'job_description': '',
-        'location': '',
-        'salary_info': None,
-        'requirements': [],
-        'contact_info': {'emails': [], 'phones': [], 'whatsapp': [], 'telegram': []},
-        'posted_date': None,
-        'applicant_count': None,
-        'application_method': '',
-        'company_website': None,
-        'job_type': None,
-        'experience_level': None,
-        'industry': None,
-        'html_content': ''
-    }
+    logger.info(f"Starting job-only scraping: {url}")
     
     try:
         # Validate LinkedIn URL
         if not validate_linkedin_url(url):
             raise ValueError(f"Invalid LinkedIn URL format: {url}")
         
-        # Try static scraping first (faster)
-        static_result = _scrape_static_content(url)
-        if static_result and static_result.get('success'):
-            logger.info("Successfully scraped using static method")
-            result.update(static_result)
-            result['success'] = True
-            return result
+        # Get Bright Data API key
+        config = get_bright_data_config()
+        api_key = config.get('api_key', '')
         
-        # Fallback to dynamic scraping with Selenium
-        logger.info("Static scraping failed, attempting dynamic scraping")
-        dynamic_result = _scrape_dynamic_content(url)
-        if dynamic_result and dynamic_result.get('success'):
-            logger.info("Successfully scraped using dynamic method")
-            result.update(dynamic_result)
-            result['success'] = True
-            return result
+        if not api_key:
+            raise ValueError("Bright Data API key not configured. Please set BD_API_KEY environment variable.")
         
-        # Both methods failed
-        result['error_message'] = "Both static and dynamic scraping methods failed"
-        logger.error(f"Failed to scrape job posting: {url}")
+        # Create scraper and get job data only
+        scraper = BrightDataLinkedInScraper(api_key)
+        
+        job_result = scraper._make_request(
+            dataset_id=scraper.dataset_ids['jobs'], 
+            url=url,
+            timeout=120
+        )
+        
+        if not job_result.get('success'):
+            logger.error(f"❌ Job scraping failed: {job_result.get('error')}")
+            return scraper._create_error_response(
+                error=job_result.get('error', 'Job scraping failed'),
+                url=url
+            )
+        
+        # Extract and structure job data
+        job_data = job_result.get('data', {})
+        
+        # Extract poster profile URL for separate fetching
+        poster_profile_url = scraper._extract_poster_profile_url(job_data)
+        if poster_profile_url:
+            job_data['poster_profile_url'] = poster_profile_url
+        
+        # Calculate job-only fraud scores (without profile data)
+        job_only_combined = scraper._combine_job_and_poster_data(job_data, {})
+        fraud_scores = scraper._calculate_fraud_detection_scores(job_only_combined)
+        job_data.update(fraud_scores)
+        
+        # Add metadata
+        job_data.update({
+            'success': True,
+            'scraped_at': datetime.now().isoformat(),
+            'scraping_method': 'bright_data_job_only',
+            'data_source': 'bright_data_professional',
+            'api_version': '4.0.0',
+            'profile_available': bool(poster_profile_url)
+        })
+        
+        logger.info(f"✅ Job-only scraping successful!")
+        logger.info(f"📊 Job: '{job_data.get('job_title')}' at '{job_data.get('company_name')}'")
+        logger.info(f"👤 Profile URL available: {bool(poster_profile_url)}")
+        
+        return job_data
         
     except Exception as e:
-        result['error_message'] = str(e)
-        logger.error(f"Error scraping job posting {url}: {str(e)}")
+        error_msg = f"Job scraping error: {str(e)}"
+        logger.error(error_msg)
+        
+        return {
+            'success': False,
+            'error_message': error_msg,
+            'scraping_method': 'bright_data_job_error',
+            'url': url,
+            'scraped_at': datetime.now().isoformat(),
+            'api_version': '4.0.0',
+            'data_source': 'bright_data_professional'
+        }
+
+
+def scrape_profile(profile_url: str) -> Dict[str, Any]:
+    """
+    Scrape ONLY profile data - handles polling for LinkedIn profiles.
     
-    return result
+    Args:
+        profile_url (str): The LinkedIn profile URL to scrape
+        
+    Returns:
+        Dict[str, Any]: Dictionary containing profile information:
+            - Profile details (name, title, headline, summary)
+            - Experience and education history
+            - Skills, connections, followers
+            - Verification and credibility data
+    """
+    logger.info(f"Starting profile-only scraping: {profile_url}")
+    
+    try:
+        # Get Bright Data API key
+        config = get_bright_data_config()
+        api_key = config.get('api_key', '')
+        
+        if not api_key:
+            raise ValueError("Bright Data API key not configured. Please set BD_API_KEY environment variable.")
+        
+        # Create scraper and get profile data with polling
+        scraper = BrightDataLinkedInScraper(api_key)
+        
+        if not scraper.dataset_ids.get('profiles'):
+            raise ValueError("Profiles dataset not configured properly")
+        
+        profile_result = scraper._make_profile_request(
+            dataset_id=scraper.dataset_ids['profiles'],
+            url=profile_url,
+            timeout=120
+        )
+        
+        if profile_result.get('success'):
+            profile_data = profile_result.get('data', {})
+            
+            # Add metadata
+            profile_data.update({
+                'success': True,
+                'scraped_at': datetime.now().isoformat(),
+                'scraping_method': 'bright_data_profile_only',
+                'data_source': 'bright_data_professional',
+                'api_version': '4.0.0',
+                'profile_url': profile_url
+            })
+            
+            logger.info("✅ Profile-only scraping successful!")
+            logger.info(f"👤 Profile: '{profile_data.get('name')}' ({profile_data.get('headline')})")
+            
+            return profile_data
+        else:
+            logger.warning(f"⚠️ Profile scraping failed: {profile_result.get('error')}")
+            return {
+                'success': False,
+                'error_message': profile_result.get('error', 'Profile scraping failed'),
+                'scraping_method': 'bright_data_profile_failed',
+                'profile_url': profile_url,
+                'scraped_at': datetime.now().isoformat(),
+                'api_version': '4.0.0',
+                'data_source': 'bright_data_professional'
+            }
+        
+    except Exception as e:
+        error_msg = f"Profile scraping error: {str(e)}"
+        logger.error(error_msg)
+        
+        return {
+            'success': False,
+            'error_message': error_msg,
+            'scraping_method': 'bright_data_profile_error',
+            'profile_url': profile_url,
+            'scraped_at': datetime.now().isoformat(),
+            'api_version': '4.0.0',
+            'data_source': 'bright_data_professional'
+        }
 
 
 def validate_linkedin_url(url: str) -> bool:
@@ -156,7 +818,7 @@ def validate_linkedin_url(url: str) -> bool:
         return False
     
     # Check against known LinkedIn patterns
-    for pattern in LINKEDIN_URL_PATTERNS:
+    for pattern in ScrapingConstants.LINKEDIN_URL_PATTERNS:
         if re.match(pattern, url):
             return True
     
@@ -168,462 +830,75 @@ def validate_linkedin_url(url: str) -> bool:
     return False
 
 
-def extract_job_title(soup: BeautifulSoup) -> str:
+def scrape_from_html(html_content: str) -> Dict[str, Any]:
     """
-    Extract job title from LinkedIn page.
+    Fallback function for HTML content processing.
+    
+    Note: With Bright Data, this function is mainly for compatibility.
+    Bright Data provides structured JSON data, eliminating the need for HTML parsing.
     
     Args:
-        soup (BeautifulSoup): Parsed HTML content
+        html_content (str): Raw HTML content
         
     Returns:
-        str: Job title or empty string if not found
+        Dict[str, Any]: Basic extracted information (limited compared to Bright Data)
     """
-    title_selectors = [
-        'h1[data-test-id="job-title"]',
-        'h1.t-24.t-bold.jobs-unified-top-card__job-title',
-        'h1.job-title',
-        'h1[class*="job-title"]',
-        '.jobs-unified-top-card__job-title h1',
-        'h1'  # Fallback
-    ]
+    logger.warning("scrape_from_html called - consider using Bright Data for comprehensive results")
     
-    for selector in title_selectors:
-        element = soup.select_one(selector)
-        if element:
-            title = clean_scraped_text(element.get_text())
-            if title and len(title) > 3:  # Basic validation
-                return title
-    
-    return ''
-
-
-def extract_company_name(soup: BeautifulSoup) -> str:
-    """
-    Extract company name from LinkedIn page.
-    
-    Args:
-        soup (BeautifulSoup): Parsed HTML content
-        
-    Returns:
-        str: Company name or empty string if not found
-    """
-    company_selectors = [
-        'a[data-test-id="job-poster-name"]',
-        '.jobs-unified-top-card__company-name a',
-        '.company-name a',
-        'a[class*="company"]',
-        '.jobs-poster__name a'
-    ]
-    
-    for selector in company_selectors:
-        element = soup.select_one(selector)
-        if element:
-            company = clean_scraped_text(element.get_text())
-            if company and len(company) > 1:
-                return company
-    
-    return ''
-
-
-def extract_job_description(soup: BeautifulSoup) -> str:
-    """
-    Extract job description from LinkedIn page.
-    
-    Args:
-        soup (BeautifulSoup): Parsed HTML content
-        
-    Returns:
-        str: Job description or empty string if not found
-    """
-    description_selectors = [
-        '.jobs-description-content__text',
-        '.jobs-box__html-content',
-        '.description__text',
-        '.jobs-description__content',
-        'div[data-test-id="job-description"]',
-        '.jobs-unified-description-container'
-    ]
-    
-    for selector in description_selectors:
-        element = soup.select_one(selector)
-        if element:
-            description = clean_scraped_text(element.get_text())
-            if description and len(description) > 50:  # Ensure substantial content
-                return description
-    
-    return ''
-
-
-def extract_location(soup: BeautifulSoup) -> str:
-    """
-    Extract job location from LinkedIn page.
-    
-    Args:
-        soup (BeautifulSoup): Parsed HTML content
-        
-    Returns:
-        str: Location or empty string if not found
-    """
-    location_selectors = [
-        '.jobs-unified-top-card__bullet',
-        '.job-location',
-        '[data-test-id="job-location"]',
-        '.jobs-unified-top-card__subtitle-secondary-grouping span'
-    ]
-    
-    for selector in location_selectors:
-        elements = soup.select(selector)
-        for element in elements:
-            location = clean_scraped_text(element.get_text())
-            # Check if this looks like a location (contains common location keywords)
-            location_keywords = ['city', 'state', 'country', 'remote', 'hybrid', ',', 'CA', 'NY', 'TX']
-            if location and any(keyword.lower() in location.lower() for keyword in location_keywords):
-                return location
-    
-    return ''
-
-
-def extract_salary_info(soup: BeautifulSoup) -> Optional[str]:
-    """
-    Extract salary information from LinkedIn page.
-    
-    Args:
-        soup (BeautifulSoup): Parsed HTML content
-        
-    Returns:
-        Optional[str]: Salary information or None if not found
-    """
-    salary_selectors = [
-        '.salary',
-        '[data-test-id="salary"]',
-        '.jobs-unified-top-card__job-insight span',
-        '.job-criteria__text'
-    ]
-    
-    for selector in salary_selectors:
-        elements = soup.select(selector)
-        for element in elements:
-            text = clean_scraped_text(element.get_text())
-            # Check if text contains salary indicators
-            salary_indicators = ['$', '€', '£', 'salary', 'per hour', '/hr', 'annually', 'k', 'thousand']
-            if text and any(indicator.lower() in text.lower() for indicator in salary_indicators):
-                return text
-    
-    return None
-
-
-def extract_contact_info(content: str) -> Dict[str, List[str]]:
-    """
-    Extract contact information from job content.
-    
-    Args:
-        content (str): Job description content
-        
-    Returns:
-        Dict[str, List[str]]: Dictionary containing extracted contact info
-    """
-    contact_info = {
-        'emails': [],
-        'phones': [],
-        'whatsapp': [],
-        'telegram': []
-    }
-    
-    if not content:
-        return contact_info
-    
-    # Extract email addresses
-    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-    emails = re.findall(email_pattern, content)
-    contact_info['emails'] = list(set(emails))
-    
-    # Extract phone numbers (various formats)
-    phone_patterns = [
-        r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # US format
-        r'\+\d{1,3}[-.\s]?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}',  # International
-        r'\(\d{3}\)\s?\d{3}[-.]?\d{4}'  # (XXX) XXX-XXXX
-    ]
-    
-    phones = []
-    for pattern in phone_patterns:
-        phones.extend(re.findall(pattern, content))
-    contact_info['phones'] = list(set(phones))
-    
-    # Extract WhatsApp references
-    whatsapp_pattern = r'whatsapp[:\s]*([+]?\d+[\d\s-]+)'
-    whatsapp_matches = re.findall(whatsapp_pattern, content, re.IGNORECASE)
-    contact_info['whatsapp'] = whatsapp_matches
-    
-    # Extract Telegram references
-    telegram_pattern = r'telegram[:\s]*(@?\w+)'
-    telegram_matches = re.findall(telegram_pattern, content, re.IGNORECASE)
-    contact_info['telegram'] = telegram_matches
-    
-    return contact_info
-
-
-def extract_requirements(soup: BeautifulSoup) -> List[str]:
-    """
-    Extract job requirements from LinkedIn page.
-    
-    Args:
-        soup (BeautifulSoup): Parsed HTML content
-        
-    Returns:
-        List[str]: List of requirements
-    """
-    requirements = []
-    
-    # Look for requirements sections
-    requirements_selectors = [
-        '.jobs-unified-description-container ul li',
-        '.description__text ul li',
-        '.jobs-box__html-content ul li'
-    ]
-    
-    for selector in requirements_selectors:
-        elements = soup.select(selector)
-        for element in elements:
-            req_text = clean_scraped_text(element.get_text())
-            if req_text and len(req_text) > 10:  # Filter out short/empty requirements
-                requirements.append(req_text)
-    
-    # Also look for criteria sections
-    criteria_elements = soup.select('.job-criteria__text')
-    for element in criteria_elements:
-        criteria_text = clean_scraped_text(element.get_text())
-        if criteria_text:
-            requirements.append(criteria_text)
-    
-    return requirements
-
-
-def _scrape_static_content(url: str) -> Dict[str, Any]:
-    """
-    Attempt to scrape using static requests method.
-    
-    Args:
-        url (str): LinkedIn job URL
-        
-    Returns:
-        Dict[str, Any]: Scraped data or None if failed
-    """
     try:
-        session = setup_session()
-        response = retry_request(session, url, max_retries=3)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
         
-        if not response or response.status_code != 200:
-            return {'success': False}
-        
-        # Check for anti-bot measures
-        if detect_anti_bot_measures(response.text):
-            logger.warning("Anti-bot measures detected in static scraping")
-            return {'success': False}
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract all information
+        # Basic extraction (very limited compared to Bright Data)
         result = {
             'success': True,
-            'job_title': extract_job_title(soup),
-            'company_name': extract_company_name(soup),
-            'job_description': extract_job_description(soup),
-            'location': extract_location(soup),
-            'salary_info': extract_salary_info(soup),
-            'requirements': extract_requirements(soup),
-            'html_content': response.text
+            'scraping_method': 'html_fallback',
+            'scraped_at': datetime.now().isoformat(),
+            'job_title': soup.find('title').get_text() if soup.find('title') else '',
+            'job_description': soup.get_text()[:1000],  # First 1000 chars
+            'company_name': '',
+            'location': '',
+            'salary_info': None,
+            'requirements': [],
+            'contact_info': {'emails': [], 'phones': [], 'whatsapp': [], 'telegram': []},
+            'posted_date': None,
+            'applicant_count': None,
+            'application_method': '',
+            'company_website': None,
+            'job_type': None,
+            'experience_level': None,
+            'industry': None,
+            'html_content': html_content,
+            # Poster information (not available from static HTML)
+            'job_poster_name': None,
+            'job_poster_current_title': None,
+            'job_poster_current_company': None,
+            'job_poster_has_photo': 0,
+            'job_poster_is_verified': 0,
+            'job_poster_experiences': [],
+            # Model compatibility fields
+            'poster_verified': 0,
+            'poster_experience': 0,
+            'poster_photo': 0,
+            'poster_active': 0,
+            # Fraud detection scores (not available from static HTML)
+            'fraud_risk_score': 0.5,  # Default neutral score
+            'network_quality_score': 0.0,
+            'profile_completeness_score': 0.0,
+            'company_legitimacy_score': 0.5,
+            'poster_credibility_score': 0.0
         }
         
-        # Extract contact info from description
-        result['contact_info'] = extract_contact_info(result['job_description'])
-        
-        # Validate that we got essential information
-        if not result['job_title'] or not result['company_name']:
-            logger.warning("Static scraping didn't capture essential information")
-            return {'success': False}
-        
+        logger.info("HTML fallback extraction completed (limited data available)")
         return result
         
     except Exception as e:
-        logger.error(f"Static scraping failed: {str(e)}")
-        return {'success': False}
-
-
-def _scrape_dynamic_content(url: str) -> Dict[str, Any]:
-    """
-    Scrape using Selenium for dynamic content.
-    
-    Args:
-        url (str): LinkedIn job URL
-        
-    Returns:
-        Dict[str, Any]: Scraped data or None if failed
-    """
-    driver = None
-    try:
-        # Setup Selenium driver
-        driver = setup_selenium_driver()
-        
-        # Navigate to the URL
-        driver.get(url)
-        
-        # Wait for essential elements to load
-        wait = WebDriverWait(driver, 15)
-        
-        # Wait for job title to appear
-        try:
-            wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
-        except TimeoutException:
-            logger.warning("Timeout waiting for job title to load")
-        
-        # Handle "Show more" buttons to expand content
-        _expand_job_content(driver, wait)
-        
-        # Get the page source after JavaScript execution
-        page_source = driver.page_source
-        soup = BeautifulSoup(page_source, 'html.parser')
-        
-        # Extract all information
-        result = {
-            'success': True,
-            'job_title': extract_job_title(soup),
-            'company_name': extract_company_name(soup),
-            'job_description': extract_job_description(soup),
-            'location': extract_location(soup),
-            'salary_info': extract_salary_info(soup),
-            'requirements': extract_requirements(soup),
-            'html_content': page_source
+        logger.error(f"HTML fallback extraction failed: {str(e)}")
+        return {
+            'success': False,
+            'error_message': f"HTML extraction failed: {str(e)}",
+            'scraping_method': 'html_fallback_failed'
         }
-        
-        # Extract additional dynamic content
-        result.update(_extract_dynamic_elements(driver, wait))
-        
-        # Extract contact info from description
-        result['contact_info'] = extract_contact_info(result['job_description'])
-        
-        # Validate essential information
-        if not result['job_title'] or not result['company_name']:
-            logger.warning("Dynamic scraping didn't capture essential information")
-            return {'success': False}
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Dynamic scraping failed: {str(e)}")
-        return {'success': False}
-        
-    finally:
-        if driver:
-            try:
-                driver.quit()
-            except Exception as e:
-                logger.warning(f"Error closing driver: {str(e)}")
-
-
-def _expand_job_content(driver: webdriver.Chrome, wait: WebDriverWait) -> None:
-    """
-    Click "Show more" buttons to expand job content.
-    
-    Args:
-        driver: Selenium WebDriver instance
-        wait: WebDriverWait instance
-    """
-    try:
-        # Common selectors for "Show more" buttons
-        show_more_selectors = [
-            'button[aria-label="Show more, visually expands previously read content"]',
-            '.jobs-description__footer-button',
-            'button[data-test-id="show-more-button"]',
-            '.show-more-less-html__button'
-        ]
-        
-        for selector in show_more_selectors:
-            try:
-                show_more_button = wait.until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                )
-                driver.execute_script("arguments[0].click();", show_more_button)
-                time.sleep(1)  # Allow content to expand
-                logger.info(f"Clicked show more button: {selector}")
-                break
-            except (TimeoutException, NoSuchElementException):
-                continue
-                
-    except Exception as e:
-        logger.debug(f"No expandable content found or error expanding: {str(e)}")
-
-
-def _extract_dynamic_elements(driver: webdriver.Chrome, wait: WebDriverWait) -> Dict[str, Any]:
-    """
-    Extract elements that are only available after JavaScript execution.
-    
-    Args:
-        driver: Selenium WebDriver instance
-        wait: WebDriverWait instance
-        
-    Returns:
-        Dict[str, Any]: Additional scraped information
-    """
-    result = {}
-    
-    try:
-        # Extract posted date
-        try:
-            date_element = driver.find_element(By.CSS_SELECTOR, '.jobs-unified-top-card__subtitle-secondary-grouping time')
-            result['posted_date'] = date_element.get_attribute('datetime') or date_element.text
-        except NoSuchElementException:
-            result['posted_date'] = None
-        
-        # Extract applicant count
-        try:
-            applicant_element = driver.find_element(By.CSS_SELECTOR, '.jobs-unified-top-card__subtitle-secondary-grouping span')
-            applicant_text = applicant_element.text
-            # Extract number from text like "50 applicants"
-            applicant_match = re.search(r'(\d+)', applicant_text)
-            result['applicant_count'] = int(applicant_match.group(1)) if applicant_match else None
-        except (NoSuchElementException, ValueError):
-            result['applicant_count'] = None
-        
-        # Extract job type and experience level
-        try:
-            criteria_elements = driver.find_elements(By.CSS_SELECTOR, '.jobs-unified-top-card__job-insight span')
-            for element in criteria_elements:
-                text = element.text.lower()
-                if any(job_type in text for job_type in ['full-time', 'part-time', 'contract', 'temporary']):
-                    result['job_type'] = element.text
-                elif any(level in text for level in ['entry', 'associate', 'mid', 'senior', 'director', 'executive']):
-                    result['experience_level'] = element.text
-        except NoSuchElementException:
-            pass
-        
-        # Extract industry
-        try:
-            industry_element = driver.find_element(By.CSS_SELECTOR, '.jobs-company__industry')
-            result['industry'] = industry_element.text
-        except NoSuchElementException:
-            result['industry'] = None
-        
-        # Extract company website
-        try:
-            website_element = driver.find_element(By.CSS_SELECTOR, 'a[data-test-id="company-website-url"]')
-            result['company_website'] = website_element.get_attribute('href')
-        except NoSuchElementException:
-            result['company_website'] = None
-        
-        # Determine application method
-        try:
-            apply_button = driver.find_element(By.CSS_SELECTOR, '.jobs-apply-button')
-            if apply_button:
-                result['application_method'] = 'LinkedIn Easy Apply'
-            else:
-                result['application_method'] = 'External Application'
-        except NoSuchElementException:
-            result['application_method'] = 'Unknown'
-        
-    except Exception as e:
-        logger.warning(f"Error extracting dynamic elements: {str(e)}")
-    
-    return result
 
 
 def get_job_id_from_url(url: str) -> Optional[str]:
@@ -653,3 +928,14 @@ def get_job_id_from_url(url: str) -> Optional[str]:
         
     except Exception:
         return None
+
+
+# Export functions
+__all__ = [
+    'scrape_job',
+    'scrape_profile',
+    'scrape_from_html',  # Keep for HTML fallback
+    'validate_linkedin_url',
+    'get_job_id_from_url',
+    'BrightDataLinkedInScraper'
+]

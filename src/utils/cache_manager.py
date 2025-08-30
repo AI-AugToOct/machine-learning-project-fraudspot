@@ -7,15 +7,15 @@ and improve performance by avoiding repeated requests.
  Version: 1.0.0
 """
 
-import os
-import json
-import time
 import hashlib
+import json
 import logging
-from typing import Dict, Any, Optional
+import os
+import time
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
 
-from ..config import CACHE_CONFIG
+from ..core.constants import UtilityConstants
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,8 @@ def initialize_cache() -> None:
         return
     
     try:
-        if CACHE_CONFIG.get('enable_cache', True):
-            cache_dir = CACHE_CONFIG['cache_dir']
+        if UtilityConstants.CACHE_CONFIG.get('enable_cache', True):
+            cache_dir = UtilityConstants.CACHE_CONFIG['cache_dir']
             os.makedirs(cache_dir, exist_ok=True)
             
             # Load existing cache from disk
@@ -70,7 +70,7 @@ def cache_scraping_result(url: str, data: Dict[str, Any]) -> None:
         - Handle cache size limits
         - Write to persistent storage
     """
-    if not CACHE_CONFIG.get('enable_cache', True):
+    if not UtilityConstants.CACHE_CONFIG.get('enable_cache', True):
         return
     
     try:
@@ -110,7 +110,7 @@ def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
         - Return data or None based on validity
         - Update cache statistics
     """
-    if not CACHE_CONFIG.get('enable_cache', True):
+    if not UtilityConstants.CACHE_CONFIG.get('enable_cache', True):
         return None
     
     try:
@@ -121,7 +121,7 @@ def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
             
             # Check if cache entry is still valid
             cache_age = time.time() - cache_entry['timestamp']
-            max_age = CACHE_CONFIG.get('cache_expiry_days', 7) * 24 * 3600
+            max_age = UtilityConstants.CACHE_CONFIG.get('cache_expiry_days', 7) * 24 * 3600
             
             if cache_age < max_age:
                 logger.debug(f"Cache hit for URL: {url}")
@@ -220,7 +220,7 @@ def _generate_cache_key(url: str) -> str:
 def _load_cache_from_disk() -> None:
     """Load cache from persistent storage."""
     try:
-        cache_file = os.path.join(CACHE_CONFIG['cache_dir'], 'scraping_cache.json')
+        cache_file = os.path.join(UtilityConstants.CACHE_CONFIG['cache_dir'], 'scraping_cache.json')
         
         if os.path.exists(cache_file):
             with open(cache_file, 'r', encoding='utf-8') as f:
@@ -236,7 +236,7 @@ def _load_cache_from_disk() -> None:
 def _save_cache_to_disk() -> None:
     """Save cache to persistent storage."""
     try:
-        cache_file = os.path.join(CACHE_CONFIG['cache_dir'], 'scraping_cache.json')
+        cache_file = os.path.join(UtilityConstants.CACHE_CONFIG['cache_dir'], 'scraping_cache.json')
         
         with open(cache_file, 'w', encoding='utf-8') as f:
             json.dump(_cache_storage, f, indent=2, default=str)

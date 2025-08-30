@@ -1,58 +1,29 @@
 """
-Scraper Module for Job Post Fraud Detector
+Scraper Module for Job Post Fraud Detector - Single Source Implementation
 
-This module provides functionality for scraping LinkedIn job postings
-and extracting relevant information for fraud detection analysis.
+This module provides comprehensive functionality for scraping LinkedIn job postings
+using Bright Data's professional APIs for fraud detection analysis.
 
 Components:
-- linkedin_scraper: Main scraping functionality for LinkedIn job posts
-- scraper_utils: Utility functions and helpers for web scraping
+- linkedin_scraper: Complete scraping functionality with Bright Data integration
 
- Version: 1.0.0
+Version: 3.0.0 - DRY Consolidation - Single Source of Truth
 """
 
 from .linkedin_scraper import (
-    scrape_job_posting,
-    extract_job_title,
-    extract_company_name,
-    extract_job_description,
-    extract_location,
-    extract_salary_info,
-    extract_requirements,
-    extract_contact_info,
+    BrightDataLinkedInScraper,
+    get_job_id_from_url,
+    scrape_from_html,
+    scrape_job,
+    scrape_profile,
     validate_linkedin_url,
-    handle_dynamic_content
-)
-
-from .scraper_utils import (
-    setup_session,
-    handle_rate_limiting,
-    retry_request,
-    parse_job_metadata,
-    clean_scraped_text,
-    detect_anti_bot_measures,
-    save_scraped_html
 )
 
 __all__ = [
-    # linkedin_scraper functions
-    'scrape_job_posting',
-    'extract_job_title',
-    'extract_company_name',
-    'extract_job_description',
-    'extract_location',
-    'extract_salary_info',
-    'extract_requirements',
-    'extract_contact_info',
+    'scrape_job',
+    'scrape_profile',
+    'scrape_from_html',
     'validate_linkedin_url',
-    'handle_dynamic_content',
-    
-    # scraper_utils functions
-    'setup_session',
-    'handle_rate_limiting',
-    'retry_request',
-    'parse_job_metadata',
-    'clean_scraped_text',
-    'detect_anti_bot_measures',
-    'save_scraped_html'
+    'get_job_id_from_url',
+    'BrightDataLinkedInScraper'
 ]

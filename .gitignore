@@ -30,15 +30,9 @@ ENV/
 
 
 
-# Data files
-data/raw/*.csv
-data/processed/*.csv
-*.pkl
-*.joblib
 
 # Models
 models/*.pkl
-models/*.joblib
 models/*.h5
 
 # Cache

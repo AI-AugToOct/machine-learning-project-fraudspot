@@ -18,17 +18,18 @@ Key Features:
 - Sophisticated multi-layered fraud indicators
 
 Author: Tuwaiq ML Bootcamp
-Version: 2.0.0 - Enhanced
+Version: 3.0.0 - Enhanced
 """
 
-import pandas as pd
-import numpy as np
+import ast
+import csv
+import json
 import random
 from datetime import datetime, timedelta
-import json
-import ast
-from typing import List, Dict, Any
-import csv
+from typing import Any, Dict, List
+
+import numpy as np
+import pandas as pd
 
 # Set random seed for reproducibility
 random.seed(42)
