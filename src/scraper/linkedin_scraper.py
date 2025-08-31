@@ -499,17 +499,32 @@ class BrightDataLinkedInScraper:
         
         # Enhanced poster information from profile data
         if poster_data:
+            # Pass the entire profile data in 'poster' dict for data processor
+            combined['poster'] = poster_data
+            
+            # Also extract specific fields for backward compatibility and display
             combined.update({
                 'job_poster_headline': poster_data.get('headline', ''),
                 'job_poster_location': poster_data.get('location', ''),
-                'job_poster_summary': poster_data.get('summary', ''),
-                'job_poster_experiences': poster_data.get('experiences', []),
+                'job_poster_summary': poster_data.get('summary', poster_data.get('about', '')),
+                'job_poster_experiences': poster_data.get('experience', []),  # Note: 'experience' not 'experiences'
                 'job_poster_education': poster_data.get('education', []),
                 'job_poster_skills': poster_data.get('skills', []),
-                'job_poster_connections': poster_data.get('connections_count', 0),
-                'job_poster_followers': poster_data.get('followers_count', 0),
-                'job_poster_has_photo': 1 if poster_data.get('profile_picture_url') else 0,
-                'job_poster_is_verified': 1 if poster_data.get('is_verified', False) else 0,
+                'job_poster_connections': poster_data.get('connections', 0),
+                'job_poster_followers': poster_data.get('followers', 0),
+                'job_poster_has_photo': 1 if (poster_data.get('avatar') and not poster_data.get('default_avatar', False)) else 0,
+                'job_poster_is_verified': 1 if poster_data.get('connections', 0) >= 500 else 0,  # Infer verification
+                
+                # Pass key Bright Data fields directly for data processor
+                'avatar': poster_data.get('avatar'),
+                'default_avatar': poster_data.get('default_avatar', False),
+                'connections': poster_data.get('connections', 0),
+                'followers': poster_data.get('followers', 0),
+                'current_company': poster_data.get('current_company', {}),
+                'experience': poster_data.get('experience', []),
+                'education': poster_data.get('education', []),
+                'activity': poster_data.get('activity', []),
+                'recommendations_count': poster_data.get('recommendations_count', 0)
             })
         else:
             # Default values when no poster profile available
@@ -526,13 +541,14 @@ class BrightDataLinkedInScraper:
                 'job_poster_is_verified': 0,
             })
         
-        # Model compatibility fields
-        combined.update({
-            'poster_verified': combined.get('job_poster_is_verified', 0),
-            'poster_experience': len(combined.get('job_poster_experiences', [])),
-            'poster_photo': combined.get('job_poster_has_photo', 0),
-            'poster_active': 1 if combined.get('job_poster_connections', 0) > 0 else 0,
-        })
+        # Model compatibility fields - use VerificationService for consistent defaults
+        # Only set if poster_data is not available (for fallback)
+        if not poster_data:
+            # Use verification service to get consistent default verification features
+            from ..services.verification_service import VerificationService
+            verification_service = VerificationService()
+            verification_defaults = verification_service.extract_verification_features({})
+            combined.update(verification_defaults)
         
         return combined
 
@@ -876,11 +892,9 @@ def scrape_from_html(html_content: str) -> Dict[str, Any]:
             'job_poster_has_photo': 0,
             'job_poster_is_verified': 0,
             'job_poster_experiences': [],
-            # Model compatibility fields
-            'poster_verified': 0,
-            'poster_experience': 0,
-            'poster_photo': 0,
-            'poster_active': 0,
+            # Model compatibility fields - use VerificationService for defaults
+            # VerificationService will handle these when data is processed
+            # Use VerificationService for consistent verification defaults
             # Fraud detection scores (not available from static HTML)
             'fraud_risk_score': 0.5,  # Default neutral score
             'network_quality_score': 0.0,
@@ -930,10 +944,153 @@ def get_job_id_from_url(url: str) -> Optional[str]:
         return None
 
 
+def scrape_company(url: str) -> Dict[str, Any]:
+    """
+    Scrape LinkedIn company data for enrichment.
+    
+    Args:
+        url (str): The LinkedIn company URL to scrape
+        
+    Returns:
+        Dict[str, Any]: Dictionary containing company information:
+            - followers: Number of company followers
+            - company_employees: Parsed employee count from company_size
+            - company_founded: Company founding year
+            - network_quality_score: Calculated score (0-1)
+            - legitimacy_score: Calculated score (0-1)
+    """
+    logger.info(f"Starting company scraping: {url}")
+    
+    try:
+        # Validate LinkedIn company URL
+        if not url or 'linkedin.com/company/' not in url:
+            raise ValueError(f"Invalid LinkedIn company URL format: {url}")
+        
+        # Get Bright Data API key
+        config = get_bright_data_config()
+        api_key = config.get('api_key', '')
+        
+        if not api_key:
+            raise ValueError("Bright Data API key not configured. Please set BD_API_KEY environment variable.")
+        
+        # Create scraper and get company data
+        scraper = BrightDataLinkedInScraper(api_key)
+        
+        company_result = scraper._make_request(
+            dataset_id=scraper.dataset_ids['companies'], 
+            url=url,
+            timeout=120
+        )
+        
+        if not company_result.get('success'):
+            logger.error(f"❌ Company scraping failed: {company_result.get('error')}")
+            return {
+                'success': False,
+                'error': company_result.get('error', 'Company scraping failed'),
+                'url': url
+            }
+        
+        # Extract company data
+        company_data = company_result.get('data', [])
+        if not company_data:
+            logger.error("❌ No company data returned")
+            return {
+                'success': False,
+                'error': 'No company data returned',
+                'url': url
+            }
+        
+        # Get first company result
+        company_info = company_data[0] if isinstance(company_data, list) else company_data
+        
+        # Parse company size to get employee count
+        company_size_str = company_info.get('company_size', '')
+        company_employees = _parse_company_size_to_employees(company_size_str)
+        
+        # Extract basic company data
+        enriched_data = {
+            'success': True,
+            'url': url,
+            'company_name': company_info.get('name', ''),
+            'company_followers': company_info.get('followers', 0),
+            'company_employees': company_employees,
+            'company_founded': company_info.get('founded'),
+            'company_size': company_size_str,
+            'company_website': company_info.get('website'),
+            'employees_in_linkedin': company_info.get('employees_in_linkedin', 0),
+            'industries': company_info.get('industries', ''),
+        }
+        
+        # Calculate enrichment scores using VerificationService (single source of truth)
+        from ..services.verification_service import VerificationService
+        verification_service = VerificationService()
+        enrichment_scores = verification_service.calculate_company_verification_scores(enriched_data)
+        enriched_data.update(enrichment_scores)
+        
+        logger.info(f"✅ Company scraping completed: {enriched_data['company_name']}")
+        return enriched_data
+        
+    except Exception as e:
+        logger.error(f"❌ Company scraping failed: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'url': url
+        }
+
+
+def _parse_company_size_to_employees(company_size: str) -> int:
+    """
+    Parse LinkedIn company size string to estimated employee count.
+    
+    Args:
+        company_size: String like "11-50 employees", "501-1000 employees"
+        
+    Returns:
+        int: Estimated employee count (midpoint of range)
+    """
+    if not company_size:
+        return 0
+    
+    try:
+        # Common LinkedIn size formats
+        size_mappings = {
+            '1 employee': 1,
+            '2-10 employees': 6,
+            '11-50 employees': 30,
+            '51-200 employees': 125,
+            '201-500 employees': 350,
+            '501-1000 employees': 750,
+            '1001-5000 employees': 3000,
+            '5001-10000 employees': 7500,
+            '10000+ employees': 15000
+        }
+        
+        # Direct mapping
+        if company_size in size_mappings:
+            return size_mappings[company_size]
+        
+        # Extract numbers from string like "11-50"
+        import re
+        numbers = re.findall(r'\d+', company_size)
+        if len(numbers) >= 2:
+            return (int(numbers[0]) + int(numbers[1])) // 2
+        elif len(numbers) == 1:
+            num = int(numbers[0])
+            return num if num <= 10000 else 15000  # Cap at 15k for 10000+
+        
+        return 0
+        
+    except (ValueError, TypeError):
+        return 0
+
+
+
 # Export functions
 __all__ = [
     'scrape_job',
     'scrape_profile',
+    'scrape_company',
     'scrape_from_html',  # Keep for HTML fallback
     'validate_linkedin_url',
     'get_job_id_from_url',

@@ -100,7 +100,10 @@ class FeatureEngine(BaseEstimator, TransformerMixin):
         # Step 5: Generate derived/computed features
         df = self._generate_computed_scores(df)
         
-        # Step 6: Ensure all 33 columns exist with correct types
+        # Step 6: Generate company verification features (NEW)
+        df = self._generate_company_features(df)
+        
+        # Step 7: Ensure all columns exist with correct types (updated for 27 ML + text columns)
         df = self._ensure_complete_feature_set(df)
         
         logger.info(f"Complete feature generation: {df.shape[1]} columns")
@@ -137,11 +140,10 @@ class FeatureEngine(BaseEstimator, TransformerMixin):
         if 'language' not in df_basic.columns:
             df_basic['language'] = 0
         
-        # Poster columns with smart defaults
-        poster_defaults = {'poster_verified': 0, 'poster_experience': 0, 'poster_photo': 0, 'poster_active': 0}
-        for col, default in poster_defaults.items():
-            if col not in df_basic.columns:
-                df_basic[col] = default
+        # Use centralized verification service for poster column handling
+        from ..services.verification_service import VerificationService
+        verification_service = VerificationService()
+        df_basic = verification_service.extract_verification_features_df(df_basic)
         
         return df_basic
     
@@ -399,40 +401,14 @@ class FeatureEngine(BaseEstimator, TransformerMixin):
     
     def _calculate_verification_scores(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate verification scores - THE 100% ACCURACY PREDICTORS.
-        This is the SINGLE source for verification logic.
+        Calculate verification scores using centralized VerificationService.
+        This delegates to the SINGLE source of truth for verification logic.
         """
-        logger.info("Calculating verification scores (critical predictors)")
+        from ..services.verification_service import VerificationService
+        verification_service = VerificationService()
         
-        verification_cols = ['poster_verified', 'poster_experience', 'poster_photo', 'poster_active']
-        
-        # Ensure verification columns exist
-        for col in verification_cols:
-            if col not in df.columns:
-                df[col] = 0
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-        
-        # Calculate weighted verification score (0-4 scale)
-        df['poster_score'] = (
-            df['poster_verified'] * 1.0 +    # Each worth 1 point
-            df['poster_experience'] * 1.0 +
-            df['poster_photo'] * 1.0 +
-            df['poster_active'] * 1.0
-        )
-        
-        # Create verification categories (powerful predictors)
-        df['is_highly_verified'] = (df['poster_score'] >= 3).astype(int)
-        df['is_unverified'] = (df['poster_score'] == 0).astype(int)
-        df['verification_ratio'] = df['poster_score'] / 4.0
-        
-        # Language-verification interactions (if language column exists)
-        if 'language' in df.columns:
-            df['is_arabic'] = (df['language'] == 1).astype(int)
-            df['is_english'] = (df['language'] == 0).astype(int)
-            df['arabic_unverified'] = (df['is_arabic'] & (df['poster_score'] <= 1)).astype(int)
-            df['english_unverified'] = (df['is_english'] & (df['poster_score'] <= 1)).astype(int)
-        
-        return df
+        # Use centralized verification service for all score calculations
+        return verification_service.calculate_verification_scores_df(df)
     
     def _generate_computed_scores(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate all computed score features."""
@@ -518,11 +494,56 @@ class FeatureEngine(BaseEstimator, TransformerMixin):
         """Calculate contact professionalism score."""
         text = str(row.get('job_description', ''))
         if not text or text == 'nan':
-            return 0.8
+            return 0.7  # Neutral default instead of 0.8
         
         text = text.lower()
         unprofessional_count = sum(1 for contact in FraudKeywords.UNPROFESSIONAL_CONTACTS if contact in text)
         return max(0, 1.0 - unprofessional_count * 0.25)
+    
+    def _generate_company_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate company verification features using VerificationService (single source of truth).
+        
+        Converts raw company data into normalized scores for ML model input by delegating
+        ALL calculations to the VerificationService to avoid code duplication.
+        
+        Args:
+            df: DataFrame with potential company data columns
+            
+        Returns:
+            DataFrame with company feature scores added
+        """
+        logger.info("Generating company verification features using VerificationService")
+        df_company = df.copy()
+        
+        # Import VerificationService (avoid circular imports at module level)
+        from ..services.verification_service import VerificationService
+        verification_service = VerificationService()
+        
+        # Process each row using VerificationService as single source of truth
+        def generate_company_scores(row):
+            job_data = row.to_dict()
+            
+            # Use VerificationService for ALL company scoring calculations
+            company_scores = verification_service.calculate_company_verification_scores(job_data)
+            
+            return pd.Series(company_scores)
+        
+        # Generate company scores for all rows using VerificationService
+        company_scores = df_company.apply(generate_company_scores, axis=1)
+        
+        # Add all company scores to dataframe
+        for col in company_scores.columns:
+            df_company[col] = company_scores[col]
+        
+        logger.info(f"Company features generated using VerificationService - "
+                   f"followers: {df_company['company_followers_score'].mean():.3f}, "
+                   f"employees: {df_company['company_employees_score'].mean():.3f}, "
+                   f"founded: {df_company['company_founded_score'].mean():.3f}, "
+                   f"network: {df_company['network_quality_score'].mean():.3f}, "
+                   f"legitimacy: {df_company['company_legitimacy_score'].mean():.3f}")
+        
+        return df_company
     
     def _ensure_complete_feature_set(self, df: pd.DataFrame) -> pd.DataFrame:
         """Ensure all required columns exist with correct types, return only ML features."""

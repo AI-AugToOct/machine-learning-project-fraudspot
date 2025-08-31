@@ -166,20 +166,14 @@ def render_detailed_analysis(result: Dict[str, Any]) -> None:
         prediction = result.get('prediction', {})
         poster_score = prediction.get('poster_score', 0)
         
-        # Show verification breakdown
-        poster_verified = job_data.get('poster_verified', job_data.get('job_poster_is_verified', 0))
-        poster_photo = job_data.get('poster_photo', job_data.get('job_poster_has_photo', 0))
-        poster_active = job_data.get('poster_active', 0)
-        poster_experience = job_data.get('poster_experience', 0)
+        # Use centralized verification service
+        from ...services.verification_service import VerificationService
+        verification_service = VerificationService()
         
         st.markdown(f"**Total Verification Score: {poster_score}/4**")
         
-        verification_details = [
-            ("Account Verified", poster_verified, "✅" if poster_verified else "❌"),
-            ("Has Profile Photo", poster_photo, "📸" if poster_photo else "👤"),
-            ("Recent Activity", poster_active, "⚡" if poster_active else "💤"),
-            ("Relevant Experience", poster_experience, "🎯" if poster_experience else "❓")
-        ]
+        # Get verification breakdown from service
+        verification_details = verification_service.get_verification_breakdown(job_data)
         
         for detail_name, value, emoji in verification_details:
             color = "green" if value else "red"
@@ -227,14 +221,14 @@ def render_job_poster_analysis(job_data: Dict[str, Any]) -> None:
     company_name = (job_data.get('company') or job_data.get('company_name') or 
                    job_data.get('company_name') or 'Unknown')
     
-    # Get verification features from job data
-    poster_verified = job_data.get('poster_verified', job_data.get('job_poster_is_verified', 0))
-    poster_photo = job_data.get('poster_photo', job_data.get('job_poster_has_photo', 0))
-    poster_active = job_data.get('poster_active', 0)
-    poster_experience = job_data.get('poster_experience', 0)  # Keep the typo for consistency
+    # Use centralized verification service
+    from ...services.verification_service import VerificationService
+    verification_service = VerificationService()
     
-    # Calculate verification score
-    poster_score = int(poster_verified) + int(poster_photo) + int(poster_active) + int(poster_experience)
+    # Get verification features and score from service
+    verification_summary = verification_service.get_verification_summary(job_data)
+    poster_score = verification_summary['score']
+    verification_features = verification_summary['features']
     
     # Trust score calculation enhanced with verification
     base_trust_score = calculate_company_trust_score(company_name)
@@ -245,56 +239,23 @@ def render_job_poster_analysis(job_data: Dict[str, Any]) -> None:
     # Create enhanced trust analysis dashboard
     st.markdown("#### 🏆 Verification Features (Perfect Fraud Predictors)")
     
-    # Individual verification status
+    # Individual verification status using service
+    badges = verification_service.get_verification_badges(job_data)
     col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
-        status_color = "#4CAF50" if poster_verified else "#F44336"
-        status_icon = "✅" if poster_verified else "❌"
-        st.markdown(f"""
-        <div style="text-align: center; padding: 10px; border: 2px solid {status_color}; 
-                    border-radius: 8px; background: {status_color}15;">
-            <div style="font-size: 2rem;">{status_icon}</div>
-            <div style="color: {status_color}; font-weight: bold;">VERIFIED</div>
-            <div style="font-size: 0.9rem;">Account Status</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        status_color = "#4CAF50" if poster_photo else "#F44336"
-        status_icon = "📸" if poster_photo else "👤"
-        st.markdown(f"""
-        <div style="text-align: center; padding: 10px; border: 2px solid {status_color}; 
-                    border-radius: 8px; background: {status_color}15;">
-            <div style="font-size: 2rem;">{status_icon}</div>
-            <div style="color: {status_color}; font-weight: bold;">PHOTO</div>
-            <div style="font-size: 0.9rem;">Profile Picture</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        status_color = "#4CAF50" if poster_active else "#F44336"
-        status_icon = "⚡" if poster_active else "💤"
-        st.markdown(f"""
-        <div style="text-align: center; padding: 10px; border: 2px solid {status_color}; 
-                    border-radius: 8px; background: {status_color}15;">
-            <div style="font-size: 2rem;">{status_icon}</div>
-            <div style="color: {status_color}; font-weight: bold;">ACTIVE</div>
-            <div style="font-size: 0.9rem;">Recent Activity</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        status_color = "#4CAF50" if poster_experience else "#F44336"
-        status_icon = "🎯" if poster_experience else "❓"
-        st.markdown(f"""
-        <div style="text-align: center; padding: 10px; border: 2px solid {status_color}; 
-                    border-radius: 8px; background: {status_color}15;">
-            <div style="font-size: 2rem;">{status_icon}</div>
-            <div style="color: {status_color}; font-weight: bold;">EXPERIENCE</div>
-            <div style="font-size: 0.9rem;">Relevant Background</div>
-        </div>
-        """, unsafe_allow_html=True)
+    for i, (col, badge) in enumerate(zip([col1, col2, col3, col4], badges)):
+        with col:
+            status_color = "#4CAF50" if badge['verified'] else "#F44336"
+            status_icon = badge['icon'] if badge['verified'] else "❌"
+            
+            st.markdown(f"""
+            <div style="text-align: center; padding: 10px; border: 2px solid {status_color}; 
+                        border-radius: 8px; background: {status_color}15;">
+                <div style="font-size: 2rem;">{status_icon}</div>
+                <div style="color: {status_color}; font-weight: bold;">{badge['label']}</div>
+                <div style="font-size: 0.9rem;">{badge['description']}</div>
+            </div>
+            """, unsafe_allow_html=True)
     
     # Verification summary
     st.markdown("---")

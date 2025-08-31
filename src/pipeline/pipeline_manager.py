@@ -117,7 +117,10 @@ class PipelineManager:
     
     def prepare_data(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
         """
-        Prepare data for training using core modules.
+        Prepare data for training using CORRECTED pipeline order.
+        
+        BEST PRACTICE: FeatureEngine → DataProcessor → Model
+        This ensures DataProcessor only sees ML features, not raw categorical columns.
         
         Returns:
             Tuple: X_train, X_test, y_train, y_test (all processed)
@@ -125,7 +128,7 @@ class PipelineManager:
         if self.data is None or self.data.empty:
             raise ValueError("No data loaded. Call load_data() first.")
         
-        logger.info("Preparing data for training")
+        logger.info("Preparing data for training with corrected pipeline architecture")
         
         try:
             # Step 1: Split data
@@ -139,22 +142,26 @@ class PipelineManager:
                 stratify=y
             )
             
-            # Step 2: Process with DataProcessor (single source of truth)
-            X_train_processed = self.data_processor.fit_transform(X_train)
-            X_test_processed = self.data_processor.transform(X_test)
+            # Step 2: CORRECTED ORDER - Generate features FIRST with FeatureEngine
+            logger.info("Step 2: Feature engineering (before data processing)")
+            X_train_features = self.feature_engine.fit_transform(X_train)
+            X_test_features = self.feature_engine.transform(X_test)
             
-            # Step 3: Generate features with FeatureEngine (single source of truth)
-            X_train_features = self.feature_engine.fit_transform(X_train_processed)
-            X_test_features = self.feature_engine.transform(X_test_processed)
+            # Step 3: CORRECTED ORDER - Process features with DataProcessor
+            logger.info("Step 3: Data processing (scaling ML features only)")
+            X_train_processed = self.data_processor.fit_transform(X_train_features)
+            X_test_processed = self.data_processor.transform(X_test_features)
             
             # Step 4: Balance classes using DataProcessor
+            logger.info("Step 4: Class balancing")
             X_train_balanced, y_train_balanced = self.data_processor.balance_classes(
-                X_train_features, y_train
+                X_train_processed, y_train
             )
             
-            logger.info(f"Data preparation completed - Train: {X_train_balanced.shape}, Test: {X_test_features.shape}")
+            logger.info(f"Corrected data preparation completed - Train: {X_train_balanced.shape}, Test: {X_test_processed.shape}")
+            logger.info("Pipeline now follows best practice: Raw → FeatureEngine → DataProcessor → Model")
             
-            return X_train_balanced, X_test_features, y_train_balanced, y_test
+            return X_train_balanced, X_test_processed, y_train_balanced, y_test
             
         except Exception as e:
             logger.error(f"Data preparation failed: {str(e)}")
@@ -239,7 +246,10 @@ class PipelineManager:
     
     def build_pipeline(self) -> Pipeline:
         """
-        Build sklearn pipeline with core components.
+        Build sklearn pipeline with CORRECTED component order.
+        
+        BEST PRACTICE ORDER: FeatureEngine → DataProcessor → Model
+        This ensures consistency between training and prediction.
         
         Returns:
             Pipeline: Complete deployment pipeline
@@ -247,14 +257,14 @@ class PipelineManager:
         if any(comp is None for comp in [self.data_processor, self.feature_engine, self.trained_model]):
             raise ValueError("Pipeline components not ready. Complete training first.")
         
-        logger.info("Building deployment pipeline")
+        logger.info("Building deployment pipeline with corrected architecture")
         
         try:
-            # Create pipeline with core components
+            # Create pipeline with CORRECTED order - same as training
             pipeline_steps = [
-                ('data_processor', self.data_processor),
-                ('feature_engine', self.feature_engine),
-                ('model', self.trained_model)
+                ('feature_engine', self.feature_engine),    # First: Raw → ML features
+                ('data_processor', self.data_processor),    # Second: Scale ML features
+                ('model', self.trained_model)               # Third: Make prediction
             ]
             
             self.pipeline = Pipeline(pipeline_steps)
@@ -262,7 +272,7 @@ class PipelineManager:
             # Set fraud detector to use this pipeline
             self.fraud_detector.set_model_pipeline(self.pipeline)
             
-            logger.info("Deployment pipeline built successfully")
+            logger.info("Deployment pipeline built successfully with corrected order: FeatureEngine → DataProcessor → Model")
             return self.pipeline
             
         except Exception as e:

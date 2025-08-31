@@ -1,0 +1,166 @@
+[
+    {
+        "id": "aditya-nair-228a0723b",
+        "name": "Aditya Nair",
+        "city": "London, England, United Kingdom",
+        "country_code": "GB",
+        "position": "Technical Recruitment Consultant at SmartChoice International for UK & Europe || \"Seeing yourself confident in mirror is tougher than getting famous worldwide\"",
+        "about": "Hello Everyone, I began my professional journey with a passion for teaching and mentoring, driven by my background in Physical Education. My first role as a Volleyball Coach at Kids College, Indore, allowed me to share my knowledge and enthusiasm with young athletes. However, when the global pandemic and personal circumstances led me to explore new avenues, I transitioned into the dynamic field of recruitment. With nearly a year of experience as a Healthcare Recruiter at Lancesoft, followed by 1.5 years as a Canada IT Recruiter at Ktek Resourcing, and a brief stint at Infotree Global Solutions as a Talent Acquisition Specialist, I've gained diverse insights into recruitment across different regions. Currently, I’m leveraging my expertise as a Technical Recruitment Consultant at SmartChoice International (Solvex Solutions), focusing on IT profiles in the UK and Europe. My professional evolution is deeply rooted in my passions for Sports Sciences, Psychology, and Law. These interests fuel my commitment to leadership, problem-solving, and continuous learning. I thrive in team environments where I can take the initiative, embrace responsibility, and drive results. Trustworthiness and discipline are the cornerstones of my work ethic, guiding me in every challenge I undertake. I'm always eager to connect with like-minded professionals and explore growth opportunities. Let’s connect and collaborate!",
+        "current_company": {
+            "name": "SmartChoice International Limited",
+            "company_id": "smartchoice-solutions-limited",
+            "title": "Technical Recruitment Consultant (UK/Europe)",
+            "location": "London, England, United Kingdom"
+        },
+        "experience": [
+            {
+                "title": "Technical Recruitment Consultant (UK/Europe)",
+                "location": "London, England, United Kingdom",
+                "description_html": null,
+                "start_date": "Feb 2024",
+                "end_date": "Present",
+                "company": "SmartChoice International Limited",
+                "company_id": "smartchoice-solutions-limited",
+                "url": "https://uk.linkedin.com/company/smartchoice-solutions-limited",
+                "company_logo_url": "https://media.licdn.com/dms/image/v2/C4D0BAQF1GyIHXn5pPA/company-logo_100_100/company-logo_100_100/0/1630532788137/smartchoice_solutions_limited_logo?e=2147483647&v=beta&t=6o8mTJzuH-3oZfbPOrvW3YMJUHl4vcGTADBC785dZOA"
+            },
+            {
+                "title": "Technical Recruiter (UK/Europe)",
+                "location": "London Area, United Kingdom",
+                "description_html": null,
+                "start_date": "Feb 2024",
+                "end_date": "Present",
+                "company": "Solvex Solutions",
+                "company_id": "solvex-solutions",
+                "url": "https://uk.linkedin.com/company/solvex-solutions",
+                "company_logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQHrOQo6yQjIow/company-logo_100_100/company-logo_100_100/0/1708069493945/solvex_solutions_logo?e=2147483647&v=beta&t=GURl9uuCdVVbPxViRrXvURc6XOru-_T-Jd7sorMHTBA"
+            },
+            {
+                "title": "Talent Acquisition Executive (US/Canada)",
+                "location": "Plymouth, Michigan, United States",
+                "description_html": null,
+                "start_date": "Oct 2023",
+                "end_date": "Jan 2024",
+                "company": "Infotree Global Solutions",
+                "company_id": "infotree-global-solutions",
+                "url": "https://www.linkedin.com/company/infotree-global-solutions",
+                "company_logo_url": "https://media.licdn.com/dms/image/v2/D560BAQG9sZf4tOnqRA/company-logo_100_100/company-logo_100_100/0/1719827423886/infotree_global_solutions_logo?e=2147483647&v=beta&t=yejuB1-Fj5_sbEr3YfECvqoU-3JhrwU5a7e3BqhaTHY"
+            },
+            {
+                "title": "Sr. IT Recruiter (Canada)",
+                "location": "Houston, Texas, United States",
+                "description_html": null,
+                "start_date": "May 2022",
+                "end_date": "Oct 2023",
+                "company": "KTek Resourcing",
+                "company_id": "ktekresourcing",
+                "url": "https://www.linkedin.com/company/ktekresourcing",
+                "company_logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQGiW1kcqrWp1g/company-logo_100_100/B4DZW3_IQCGkAQ-/0/1742548534735/ktekresourcing_logo?e=2147483647&v=beta&t=TnLGZl5j0Br3qDIrEFVLuJoq44ZDK8_gTUUl3ysUSF4"
+            },
+            {
+                "title": "Healthcare Recruiter (US)",
+                "location": "Herndon, Virginia, United States",
+                "description_html": null,
+                "start_date": "Jun 2021",
+                "end_date": "Apr 2022",
+                "company": "LanceSoft, Inc.",
+                "company_id": "lancesoft",
+                "url": "https://www.linkedin.com/company/lancesoft",
+                "company_logo_url": "https://media.licdn.com/dms/image/v2/D560BAQFnyz20nuY3ug/company-logo_100_100/company-logo_100_100/0/1713215908322/lancesoft_logo?e=2147483647&v=beta&t=C__097mYNA4q8HOpl8U_jmFTs0Gw_vnoGp01sizsTBw"
+            },
+            {
+                "title": "Volleyball Coach",
+                "location": "Indore, Madhya Pradesh, India",
+                "description_html": null,
+                "start_date": "Dec 2019",
+                "end_date": "Jan 2021",
+                "company": "Kids College",
+                "company_logo_url": "https://static.licdn.com/aero-v1/sc/h/cs8pjfgyw96g44ln9r7tct85f"
+            }
+        ],
+        "url": "https://uk.linkedin.com/in/aditya-nair-228a0723b",
+        "educations_details": "ITM UNIVERSITY, GWALIOR",
+        "education": [
+            {
+                "title": "ITM UNIVERSITY, GWALIOR",
+                "degree": "B.Sc (Health and Physical Edcation)",
+                "field": "Health and Physical Education/Fitness",
+                "url": "https://in.linkedin.com/school/itm-university-gwalior/?trk=public_profile_school_profile-section-card_image-click",
+                "start_year": "2016",
+                "end_year": "2019",
+                "description": null,
+                "description_html": null,
+                "institute_logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQEz4OX-sHJocQ/company-logo_100_100/B4DZVbTLqzHYAc-/0/1740993510656/itm_university_gwalior_logo?e=2147483647&v=beta&t=AAoXwYj0TAIweIWwi3m3oUDQB54E88fsAryzoS_ftvs"
+            }
+        ],
+        "recommendations_count": 6,
+        "avatar": "https://media.licdn.com/dms/image/v2/D4D03AQHQyrMlOHVyOw/profile-displayphoto-scale_200_200/B4DZh0uvmVHYAY-/0/1754305068038?e=2147483647&v=beta&t=X8RRxZ751kQieR8rSIpi3c8GRREbe4dblN4GONSgEY0",
+        "recommendations": [
+            "LinkedIn User “Thank you aditya for all your help in landing my job! I truly appreciate all your insight and expertise ”",
+            "Claudiu Stefan “I have had the pleasure of working with Aditya where he has consistently demonstrated exceptional skills and dedication. He has always been proactive in taking challenges and has shown a strong commitment to continuous improvement.”"
+        ],
+        "followers": 7965,
+        "connections": 500,
+        "current_company_company_id": "smartchoice-solutions-limited",
+        "current_company_name": "SmartChoice International Limited",
+        "location": "London",
+        "input_url": "https://uk.linkedin.com/in/aditya-nair-228a0723b",
+        "linkedin_id": "aditya-nair-228a0723b",
+        "activity": [
+            {
+                "interaction": "Liked by Aditya Nair",
+                "link": "https://www.linkedin.com/posts/ananyaparija_publicpolicy-governance-studyabroad-activity-7366751055268769792-vKA7",
+                "title": "In 2022, my world revolved around UPSC prep. When things didn’t work out, I felt completely lost until I discovered what truly excites me. :) I…",
+                "img": "https://media.licdn.com/dms/image/v2/D5622AQE55tUQtmKa3w/feedshare-shrink_1280/B56Zjv1A5mHcAs-/0/1756370317211?e=2147483647&v=beta&t=0O7FxHZ16aPYVOxiZgWijLnmz2XwHSaCcCEG0dPGjgo",
+                "id": "7366751055268769792"
+            },
+            {
+                "interaction": "Liked by Aditya Nair",
+                "link": "https://www.linkedin.com/posts/jasleen-kaur-269724ab_couchtocoffee-therapistmeetup-delhitherapists-activity-7367113112505774080-Tmvq",
+                "title": "🌿 Couch to Coffee by Heart.Mind.Body – Second Edition, Delhi 🌿 I’m bringing back Couch to Coffee ☕ a cozy networking meetup for therapists in…",
+                "img": "https://media.licdn.com/dms/image/v2/D5622AQGYqgoSgM3aqg/feedshare-shrink_1280/B56Zj0.U_6HMAs-/0/1756456637845?e=2147483647&v=beta&t=6mOX8P9H6ze3vJYRygRu7rugrIbGKN8z9Ar4BLxSddc",
+                "id": "7367113112505774080"
+            },
+            {
+                "interaction": "Liked by Aditya Nair",
+                "link": "https://www.linkedin.com/posts/kp-priyanka-profile_newfutureatcapgemini-newbeginnings-capgemini-activity-7366430082069954561-1GqN",
+                "title": "I am happy to share that I’ve joined Capgemini as a Senior Consultant! A big thanks to Neha B. for being such a wonderful support throughout the…",
+                "img": "https://media.licdn.com/dms/image/v2/D5622AQE4-f3W6MtVdA/feedshare-shrink_2048_1536/B56ZjrRHPTHcAw-/0/1756293791291?e=2147483647&v=beta&t=8sinHPU_wy22bRae-uM_rLKJUL99aW_7i5EB4eTHNmk",
+                "id": "7366430082069954561"
+            },
+            {
+                "interaction": "Liked by Aditya Nair",
+                "link": "https://www.linkedin.com/posts/ihear-you_inner-child-the-younger-version-of-activity-7359600902783078401-HmQV",
+                "title": "**Inner child** — the younger version of you still holding on to unmet needs. **Projection** — blaming someone else for a feeling you haven’t owned…",
+                "img": "https://media.licdn.com/dms/image/v2/D5605AQHTKeXVJa8ccw/videocover-high/B56ZiKMw2iHUCQ-/0/1754665576697?e=2147483647&v=beta&t=w4VOCDBHUEuEzlx6hNhXRJJh64Bk4GxhE5zzRDEIgHI",
+                "id": "7359600902783078401"
+            }
+        ],
+        "linkedin_num_id": "1002805376",
+        "banner_image": "https://media.licdn.com/dms/image/v2/D4D16AQEhWApEjuWa3Q/profile-displaybackgroundimage-shrink_200_800/B4DZbDJbcMGUAU-/0/1747030752501?e=2147483647&v=beta&t=BQzbLgl1qAs1CzxYSu4I1o_Q1kdkLqmXqhrJTtRfS3k",
+        "honors_and_awards": [
+            {
+                "title": "Star Performer for Month April 2024",
+                "publication": "Solvex Solutions",
+                "date": "2024-05-01T00:00:00.000Z",
+                "description": null
+            },
+            {
+                "title": "Exceptional Achiever!!!",
+                "publication": "Solvex Solutions",
+                "date": "2024-04-01T00:00:00.000Z",
+                "description": null
+            }
+        ],
+        "similar_profiles": [],
+        "default_avatar": false,
+        "memorialized_account": false,
+        "bio_links": [],
+        "first_name": "Aditya",
+        "last_name": "Nair",
+        "timestamp": "2025-08-30T17:07:32.148Z",
+        "input": {
+            "url": "https://uk.linkedin.com/in/aditya-nair-228a0723b"
+        }
+    }
+]

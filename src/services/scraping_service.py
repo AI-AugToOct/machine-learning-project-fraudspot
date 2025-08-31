@@ -146,11 +146,53 @@ class ScrapingService:
             raise ValueError(f"Unknown scraping method: {method}")
     
     def _scrape_with_bright_data(self, url: str) -> Dict[str, Any]:
-        """Scrape using Bright Data API."""
+        """Scrape using Bright Data API with company enrichment."""
         try:
             # Import new scraper functions (avoid circular imports)
-            from ..scraper.linkedin_scraper import scrape_job
-            return scrape_job(url)
+            from ..scraper.linkedin_scraper import scrape_company, scrape_job
+
+            # Step 1: Scrape job data
+            job_result = scrape_job(url)
+            
+            if not job_result.get('success'):
+                return job_result
+            
+            # Step 2: Extract company URL and fetch company data
+            company_url = job_result.get('company_url')
+            if company_url:
+                logger.info(f"Fetching company data from: {company_url}")
+                
+                try:
+                    company_result = scrape_company(company_url)
+                    
+                    if company_result.get('success'):
+                        # Merge company data into job result
+                        job_result.update({
+                            'company_followers': company_result.get('company_followers', 0),
+                            'company_employees': company_result.get('company_employees', 0),
+                            'company_founded': company_result.get('company_founded'),
+                            'network_quality_score': company_result.get('network_quality_score', 0.0),
+                            'profile_completeness_score': company_result.get('profile_completeness_score', 0.0),
+                            'legitimacy_score': company_result.get('legitimacy_score', 0.5),
+                            'company_enrichment_success': True
+                        })
+                        logger.info("✅ Company data successfully merged with job data")
+                    else:
+                        logger.warning(f"Company scraping failed: {company_result.get('error')}")
+                        job_result['company_enrichment_success'] = False
+                        job_result['company_enrichment_error'] = company_result.get('error')
+                        
+                except Exception as company_error:
+                    logger.warning(f"Company scraping error: {str(company_error)}")
+                    job_result['company_enrichment_success'] = False
+                    job_result['company_enrichment_error'] = str(company_error)
+            else:
+                logger.warning("No company URL found in job data")
+                job_result['company_enrichment_success'] = False
+                job_result['company_enrichment_error'] = 'No company URL found'
+            
+            return job_result
+            
         except Exception as e:
             logger.error(f"Bright Data scraping failed: {str(e)}")
             return {'success': False, 'error': str(e), 'scraping_method': 'bright_data_failed'}

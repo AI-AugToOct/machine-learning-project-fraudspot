@@ -29,31 +29,44 @@ logger = logging.getLogger(__name__)
 
 class ModelService:
     """
-    SINGLE SOURCE for all model management operations.
+    SINGLE SOURCE for all model management operations with caching.
     
     This service handles:
-    - Model loading and saving
+    - Model loading and saving with automatic caching
     - Model registry management
-    - Model metadata tracking
+    - Model metadata tracking  
     - Model validation and versioning
+    - Singleton pattern to prevent multiple instances
     """
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, models_dir: str = "models"):
+        """Implement singleton pattern to prevent multiple instances."""
+        if cls._instance is None:
+            cls._instance = super(ModelService, cls).__new__(cls)
+        return cls._instance
     
     def __init__(self, models_dir: str = "models"):
         """
-        Initialize the model service.
+        Initialize the model service (only once due to singleton).
         
         Args:
             models_dir: Directory containing saved models
         """
-        self.models_dir = models_dir
-        self.loaded_models = {}
-        self._ensure_models_directory()
-        
-        logger.info(f"ModelService initialized with models_dir: {models_dir}")
+        if not ModelService._initialized:
+            self.models_dir = models_dir
+            self.loaded_models = {}
+            self._ensure_models_directory()
+            ModelService._initialized = True
+            logger.info(f"ModelService initialized as singleton with models_dir: {models_dir}")
+        else:
+            logger.debug("ModelService singleton already initialized")
     
     def load_model(self, model_name: str, model_path: str = None) -> Optional[Any]:
         """
-        Load ML model by name or path.
+        Load ML model by name or path with intelligent caching.
         
         Args:
             model_name: Unique model identifier
@@ -63,6 +76,12 @@ class ModelService:
             Loaded model pipeline or None if loading fails
         """
         try:
+            # Check cache first to prevent repeated loading
+            if model_name in self.loaded_models:
+                cached_model = self.loaded_models[model_name]
+                logger.debug(f"Model loaded from cache: {model_name}")
+                return cached_model['pipeline']
+            
             # Use provided path or construct from model name
             if model_path is None:
                 model_path = os.path.join(self.models_dir, f"{model_name}_pipeline.joblib")
@@ -71,17 +90,18 @@ class ModelService:
                 logger.error(f"Model file not found: {model_path}")
                 return None
             
-            # Load the model
+            # Load the model from disk
             model_pipeline = joblib.load(model_path)
             
-            # Cache the loaded model
+            # Cache the loaded model with metadata
             self.loaded_models[model_name] = {
                 'pipeline': model_pipeline,
                 'path': model_path,
-                'loaded_at': self._get_current_timestamp()
+                'loaded_at': self._get_current_timestamp(),
+                'file_size': os.path.getsize(model_path)
             }
             
-            logger.info(f"Model loaded successfully: {model_name}")
+            logger.info(f"Model loaded from disk and cached: {model_name} ({os.path.getsize(model_path)//1024}KB)")
             return model_pipeline
             
         except Exception as e:

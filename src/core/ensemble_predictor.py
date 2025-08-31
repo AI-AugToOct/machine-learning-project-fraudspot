@@ -150,6 +150,9 @@ class EnsemblePredictor:
             if len(unique_factors) >= 5:
                 break
         
+        # Debug logging for ensemble prediction
+        logger.info(f"🎯 Ensemble final: fraud_score={weighted_prob:.3f}, fraud_votes={fraud_votes}/{total_models}, confidence={confidence}")
+        
         return {
             'success': True,
             'model_failed': False,

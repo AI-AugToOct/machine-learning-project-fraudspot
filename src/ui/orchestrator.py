@@ -6,29 +6,62 @@ ALL business logic has been moved to core modules.
 Version: 3.0.0 - DRY Consolidation
 """
 
+import hashlib
 import logging
 import os
 import sys
-import threading
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 import pandas as pd
 import streamlit as st
-from streamlit.runtime.scriptrunner import add_script_run_ctx
 
 # Add the src directory to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+# Also add parent directory for relative imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.ui.components.analysis import render_results
-from src.ui.components.job_poster import display_job_poster_details
+from src.ui.components.job_poster import display_fraud_focused_profile, display_job_poster_details
 
 # Import ONLY from core modules and services (single source of truth)
-from ..core import FraudDetector
-from ..services import ScrapingService, SerializationService
+from src.core import FraudDetector
+from src.services import ScrapingService, SerializationService
 
 logger = logging.getLogger(__name__)
+
+
+def _clear_analysis_session():
+    """Clear all analysis-related session state to prevent data pollution between jobs."""
+    keys_to_clear = []
+    
+    # Collect all keys that might cause pollution
+    for key in list(st.session_state.keys()):
+        if any(prefix in key for prefix in [
+            'profile_', 'analysis_done', 'current_job_data', 
+            'show_profile_fragment', 'async_results', 'ready_for_analysis',
+            'no_profile_analysis_done', 'initial_analysis_done_',
+            'cached_fraud_detector', 'cached_ensemble', 'fraud_prediction_',
+            'analysis_result_', 'job_features_', 'verification_data_'
+        ]):
+            keys_to_clear.append(key)
+    
+    # Clear collected keys
+    for key in keys_to_clear:
+        del st.session_state[key]
+    
+    logger.info(f"Cleared {len(keys_to_clear)} session state keys for fresh analysis")
+
+
+def _get_cached_scraping_service():
+    """Get cached ScrapingService to prevent repeated initialization."""
+    if 'cached_scraping_service' not in st.session_state:
+        st.session_state['cached_scraping_service'] = ScrapingService()
+        logger.info("Created cached ScrapingService instance")
+    return st.session_state['cached_scraping_service']
+
+
 
 
 def render_analysis_section_from_url(url: str, fraud_loader=None) -> None:
@@ -41,6 +74,9 @@ def render_analysis_section_from_url(url: str, fraud_loader=None) -> None:
     """
     if not url:
         return
+    
+    # Clear previous analysis session state to prevent data pollution
+    _clear_analysis_session()
     
     st.subheader("Analysis Results")
         
@@ -56,8 +92,8 @@ def render_analysis_section_from_url(url: str, fraud_loader=None) -> None:
         import time
         start_time = time.time()
         
-        # Use ScrapingService (single source of truth)
-        scraping_service = ScrapingService()
+        # Use cached ScrapingService to prevent repeated initialization
+        scraping_service = _get_cached_scraping_service()
         with st.spinner("Loading job details..."):
             job_data = scraping_service.scrape_job_posting(url)
         
@@ -117,43 +153,80 @@ def render_analysis_section_from_url(url: str, fraud_loader=None) -> None:
             st.markdown("---")
             st.markdown("### Job Poster Profile")
             
-            # Check if profile URL is available for separate fetching
-            profile_url = job_posting.get('poster_profile_url')
-            if profile_url:
-                # Start profile fetching
-                _handle_async_profile_fetching(profile_url, scraping_service)
-                
-                # Check profile status to decide if we should run analysis
-                import hashlib
-                url_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
-                profile_key = f"profile_{url_hash}"
-                status_key = f"{profile_key}_status"
-                
-                if status_key in st.session_state and st.session_state[status_key] == 'pending':
-                    # Profile is still loading - DO NOT run analysis
-                    st.markdown("---")
-                    st.markdown("### Fraud Analysis")
-                    st.info("⏳ Waiting for profile data to complete analysis...")
-                    st.caption("Analysis will begin automatically once profile data is loaded.")
-                    return  # Exit without running analysis
-                else:
-                    # Profile loaded or failed - can run analysis
-                    st.markdown("---")
-                    st.markdown("### Fraud Analysis")
-            else:
-                st.info("No profile information available for this job posting")
-                st.caption("Profile data may not be available for all job postings")
-                
-                # No profile URL available, run analysis immediately
-                st.markdown("---")
-                st.markdown("### Fraud Analysis")
+            # Show initial analysis without profile
+            st.markdown("---")
+            st.markdown("### Initial Fraud Analysis")
+            st.info("📊 Analyzing job posting data...")
             
-            # Run fraud analysis only if we reach here (no pending profile)
+            # Run initial analysis without profile (force fresh analysis each time)
             try:
                 _run_fraud_analysis_pipeline(job_data)
             except Exception as e:
-                st.error(f"Fraud analysis failed: {str(e)}")
+                st.error(f"Initial fraud analysis failed: {str(e)}")
                 st.info("Job data is still available above")
+            
+            # Add manual profile fetch button
+            profile_url = job_posting.get('poster_profile_url')
+            if profile_url:
+                st.markdown("---")
+                st.markdown("### Profile Verification")
+                
+                # Check if profile already fetched
+                import hashlib
+                url_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
+                profile_key = f"profile_{url_hash}"
+                profile_data_key = f"{profile_key}_data"
+                
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    if st.button("🔍 Fetch Profile", key=f"fetch_{profile_key}"):
+                        # Clear any existing profile data
+                        if profile_data_key in st.session_state:
+                            del st.session_state[profile_data_key]
+                        
+                        with st.spinner("Fetching profile data..."):
+                            try:
+                                scraping_service = _get_cached_scraping_service()
+                                profile_data = scraping_service.scrape_profile(profile_url)
+                                st.session_state[profile_data_key] = profile_data
+                                st.success("✅ Profile fetched successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Profile fetch failed: {str(e)}")
+                
+                with col2:
+                    st.caption(f"Profile URL: {profile_url[:50]}..." if len(profile_url) > 50 else f"Profile URL: {profile_url}")
+                
+                # Display profile if available
+                if profile_data_key in st.session_state:
+                    profile_data = st.session_state[profile_data_key]
+                    if profile_data and isinstance(profile_data, dict) and profile_data.get('success'):
+                        st.markdown("---")
+                        st.markdown("#### Profile Information")
+                        try:
+                            display_fraud_focused_profile(profile_data, job_data)
+                            
+                            # Add re-analysis button
+                            st.markdown("---")
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                if st.button("🔄 Re-analyze with Profile", key=f"reanalyze_{profile_key}"):
+                                    st.markdown("### Updated Fraud Analysis (Including Profile)")
+                                    st.info("✅ Including profile verification data in analysis")
+                                    try:
+                                        enhanced_job_data = {**job_data, 'profile_data': profile_data}
+                                        _run_fraud_analysis_pipeline(enhanced_job_data)
+                                    except Exception as e:
+                                        st.error(f"Re-analysis failed: {str(e)}")
+                            with col2:
+                                st.caption("Compare the analysis results before and after profile verification")
+                        except Exception as e:
+                            st.error(f"❌ Error displaying profile: {str(e)}")
+                    else:
+                        st.warning("⚠️ Profile is private or could not be accessed")
+                        st.info("💡 This is common for private LinkedIn profiles")
+            else:
+                st.info("No profile URL available for this job posting")
     
     except Exception as e:
         logger.error(f"Analysis error: {str(e)}") 
@@ -304,26 +377,106 @@ def _run_fraud_analysis_pipeline(job_data: Dict[str, Any]) -> None:
     Args:
         job_data: Scraped job data
     """
+    # Check if profile data is available for enhanced analysis
+    profile_url = job_data.get('poster_profile_url')
+    profile_data = None
+    
+    if profile_url:
+        # Get profile data from session state if available
+        import hashlib
+        profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
+        profile_data_key = f"profile_{profile_hash}_data"
+        
+        if profile_data_key in st.session_state:
+            profile_data = st.session_state[profile_data_key]
+            if profile_data and profile_data.get('success'):
+                st.info("✅ Including profile verification data in analysis")
+            else:
+                profile_data = None
+                st.info("ℹ️ Profile data not available - analyzing job posting only")
     try:
         # Job card already displayed - start with fraud analysis
         from src.ui.components.fraud_dashboard import display_comprehensive_fraud_dashboard
 
-        # Initialize FraudDetector with ensemble models
+        # Initialize FraudDetector with ensemble models (force fresh instance)
         try:
             from src.core.ensemble_predictor import EnsemblePredictor
+            # Create completely fresh instances to prevent cached predictions
             ensemble = EnsemblePredictor()
             ensemble.load_models()
             fraud_detector = FraudDetector(model_pipeline=ensemble)
             
-            # Extract job posting data
+            logger.info("Created fresh FraudDetector and EnsemblePredictor instances")
+            
+            # Extract job posting data and add unique identifier
             job_posting = job_data
+            
+            # Add unique analysis identifier to prevent cross-contamination
+            job_posting['analysis_id'] = f"{hash(str(job_data))}_{int(time.time() * 1000)}"
+            
+            logger.info(f"Starting analysis for job ID: {job_posting.get('analysis_id', 'unknown')}")
             
             if not job_posting:
                 st.warning("No job data available for analysis")
                 return
             
             # Use FraudDetector for comprehensive analysis
-            prediction = fraud_detector.predict_fraud(job_posting, use_ml=True)
+            # Include profile data if available for enhanced analysis
+            enhanced_job_data = {**job_posting}
+            if profile_data:
+                enhanced_job_data['profile_data'] = profile_data
+            
+            # Wait for profile data if URL exists (synchronous for demo)
+            if profile_url and not profile_data:
+                st.info("⏳ Waiting for profile data to complete fraud analysis...")
+                # Check for async profile completion
+                import hashlib
+                profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
+                profile_data_key = f"profile_{profile_hash}_data"
+                profile_status_key = f"profile_{profile_hash}_status"
+                
+                # Wait up to 60 seconds for profile data
+                max_wait = 60
+                wait_time = 0
+                while wait_time < max_wait and st.session_state.get(profile_status_key) == 'pending':
+                    time.sleep(1)
+                    wait_time += 1
+                    
+                    # Check for completed async results
+                    if 'async_results' in st.session_state:
+                        result_key = f"result_profile_{profile_hash}"
+                        if result_key in st.session_state['async_results']:
+                            result = st.session_state['async_results'][result_key]
+                            if result['status'] == 'complete':
+                                profile_data = result['data']
+                                if profile_data and profile_data.get('success'):
+                                    enhanced_job_data['profile_data'] = profile_data
+                                    st.success("✅ Profile data loaded - including in analysis")
+                                break
+                            elif result['status'] == 'error':
+                                st.warning("⚠️ Profile data failed to load - proceeding with job data only")
+                                break
+                    
+                    # Update UI every 5 seconds
+                    if wait_time % 5 == 0:
+                        st.info(f"⏳ Still waiting for profile data... ({wait_time}s elapsed)")
+                
+                if wait_time >= max_wait:
+                    st.warning("⚠️ Profile data timeout - proceeding with job data only")
+            
+            # Make fresh ML prediction with unique job identifier
+            logger.info(f"Making ML prediction for job {enhanced_job_data.get('analysis_id', 'unknown')}")
+            prediction = fraud_detector.predict_fraud(enhanced_job_data, use_ml=True)
+            logger.info(f"ML prediction completed: fraud_score={prediction.get('fraud_score', 'N/A')}")
+            
+            # Validate prediction data to prevent format errors
+            if not prediction:
+                prediction = {'fraud_score': 0, 'risk_level': 'Unknown', 'error': 'No prediction data'}
+            
+            # Ensure required fields exist with safe defaults
+            prediction.setdefault('fraud_score', 0)
+            prediction.setdefault('risk_level', 'Unknown')
+            prediction.setdefault('explanation', {})
             
         except Exception as model_error:
             st.error(f"❌ Failed to load ML models: {model_error}")
@@ -332,7 +485,55 @@ def _run_fraud_analysis_pipeline(job_data: Dict[str, Any]) -> None:
             # Show button but don't automatically fallback
             if st.button("📊 Use Rule-Based Analysis Instead"):
                 fraud_detector = FraudDetector()  # No model - explicit fallback only
-                prediction = fraud_detector.predict_fraud(job_posting, use_ml=False)
+                # Use enhanced data with profile if available
+                enhanced_job_data = {**job_posting}
+                if profile_data:
+                    enhanced_job_data['profile_data'] = profile_data
+                
+                # Also wait for profile data in rule-based mode if URL exists
+                if profile_url and not profile_data:
+                    st.info("⏳ Waiting for profile data for rule-based analysis...")
+                    import hashlib
+                    profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
+                    
+                    # Wait up to 30 seconds for profile data (shorter for rule-based)
+                    max_wait = 30
+                    wait_time = 0
+                    while wait_time < max_wait and st.session_state.get(f"profile_{profile_hash}_status") == 'pending':
+                        time.sleep(1)
+                        wait_time += 1
+                        
+                        # Check for completed async results
+                        if 'async_results' in st.session_state:
+                            result_key = f"result_profile_{profile_hash}"
+                            if result_key in st.session_state['async_results']:
+                                result = st.session_state['async_results'][result_key]
+                                if result['status'] == 'complete':
+                                    profile_data = result['data']
+                                    if profile_data and profile_data.get('success'):
+                                        enhanced_job_data['profile_data'] = profile_data
+                                        st.success("✅ Profile data loaded - including in rule-based analysis")
+                                    break
+                                elif result['status'] == 'error':
+                                    st.warning("⚠️ Profile data failed - using rule-based with job data only")
+                                    break
+                        
+                        if wait_time % 10 == 0:
+                            st.info(f"⏳ Still waiting... ({wait_time}s elapsed)")
+                    
+                    if wait_time >= max_wait:
+                        st.warning("⚠️ Profile timeout - using rule-based with job data only")
+                
+                prediction = fraud_detector.predict_fraud(enhanced_job_data, use_ml=False)
+                
+                # Validate prediction data to prevent format errors
+                if not prediction:
+                    prediction = {'fraud_score': 0, 'risk_level': 'Unknown', 'error': 'No prediction data'}
+                
+                # Ensure required fields exist with safe defaults
+                prediction.setdefault('fraud_score', 0)
+                prediction.setdefault('risk_level', 'Unknown')
+                prediction.setdefault('explanation', {})
             else:
                 # Don't show analysis at all - user must explicitly request rule-based
                 st.info("Analysis unavailable - ML models not loaded")
@@ -348,8 +549,39 @@ def _run_fraud_analysis_pipeline(job_data: Dict[str, Any]) -> None:
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("📊 Use Rule-Based Analysis"):
-                    prediction = fraud_detector.predict_fraud(job_posting, use_ml=False)
-                    st.rerun()
+                    # Use enhanced data with profile if available
+                    enhanced_job_data = {**job_posting}
+                    if profile_data:
+                        enhanced_job_data['profile_data'] = profile_data
+                    
+                    # Wait for profile data in rule-based fallback mode too
+                    if profile_url and not profile_data:
+                        st.info("⏳ Loading profile data for rule-based analysis...")
+                        import hashlib
+                        profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
+                        
+                        # Check async results immediately for quick response
+                        if 'async_results' in st.session_state:
+                            result_key = f"result_profile_{profile_hash}"
+                            if result_key in st.session_state['async_results']:
+                                result = st.session_state['async_results'][result_key]
+                                if result['status'] == 'complete':
+                                    profile_data = result['data']
+                                    if profile_data and profile_data.get('success'):
+                                        enhanced_job_data['profile_data'] = profile_data
+                                        st.success("✅ Profile data loaded for rule-based analysis")
+                    
+                    prediction = fraud_detector.predict_fraud(enhanced_job_data, use_ml=False)
+                
+                # Validate prediction data to prevent format errors
+                if not prediction:
+                    prediction = {'fraud_score': 0, 'risk_level': 'Unknown', 'error': 'No prediction data'}
+                
+                # Ensure required fields exist with safe defaults
+                prediction.setdefault('fraud_score', 0)
+                prediction.setdefault('risk_level', 'Unknown')
+                prediction.setdefault('explanation', {})
+                st.rerun()
             with col2:
                 if st.button("📄 Show Job Data Only"):
                     # Just display the job data without any analysis
@@ -392,196 +624,6 @@ def _store_analysis_result(job_posting: Dict[str, Any], prediction: Dict[str, An
     st.session_state['analysis_history'].append(analysis_summary)
 
 
-@st.fragment(run_every=2)  # Auto-refresh every 2 seconds without full page reload
-def _profile_fragment(profile_url: str, scraping_service, profile_key: str, url_hash: str) -> None:
-    """Fragment for profile fetching that updates independently."""
-    # Key definitions
-    status_key = f"{profile_key}_status"
-    data_key = f"{profile_key}_data"
-    error_key = f"{profile_key}_error"
-    timestamp_key = f"{profile_key}_timestamp"
-    
-    # Check for async results from background thread
-    if 'async_results' in st.session_state:
-        result_key = f"result_{profile_key}"
-        if result_key in st.session_state['async_results']:
-            result = st.session_state['async_results'][result_key]
-            
-            # Update session state from thread result
-            if result['status'] == 'complete':
-                st.session_state[data_key] = result['data']
-                st.session_state[f"{profile_key}_elapsed"] = result['elapsed']
-                st.session_state[status_key] = 'complete'
-            elif result['status'] == 'error':
-                st.session_state[error_key] = result['error']
-                st.session_state[status_key] = 'error'
-            
-            # Clean up the result
-            del st.session_state['async_results'][result_key]
-
-    # Get current status or default to pending
-    status = st.session_state.get(status_key, 'pending')
-    
-    if status == 'pending':
-        # Calculate elapsed time
-        fetch_start_time = st.session_state.get(f"{profile_key}_fetch_start")
-        current_time = time.time()
-        if fetch_start_time:
-            elapsed = int(current_time - fetch_start_time)
-        else:
-            elapsed = int(current_time - st.session_state.get(timestamp_key, current_time))
-        
-        # Display loading info
-        st.info(f"🔄 Fetching profile data... ({elapsed}s elapsed)")
-        
-        # Progress indicator
-        max_time_seconds = 1800  # 30 minutes maximum
-        raw_progress = min(elapsed / max_time_seconds, 1.0)
-        progress = max(0.01, raw_progress) if elapsed > 0 else 0.01
-        st.progress(progress)
-        
-        # Status caption
-        if elapsed < 30:
-            st.caption("⏳ Initial request processing...")
-        elif elapsed < 120:
-            st.caption("🔄 Profile data being scraped...")  
-        else:
-            st.caption("⌛ Complex profile - this may take up to 5 minutes")
-        
-        # Control buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 Check Status", key=f"refresh_{profile_key}"):
-                pass  # Fragment auto-refreshes
-        with col2:
-            if st.button("⏹️ Cancel", key=f"cancel_{profile_key}"):
-                # Clear the async request
-                for key in [status_key, data_key, error_key, timestamp_key, f"{profile_key}_fetch_start"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.info("Profile fetch cancelled")
-                return
-                
-    elif status == 'complete':
-        profile_data = st.session_state[data_key]
-        elapsed_time = st.session_state.get(f"{profile_key}_elapsed", 0)
-        
-        if profile_data and profile_data.get('success'):
-            st.success(f"✅ Profile loaded successfully in {elapsed_time:.1f} seconds")
-            # Display profile information
-            from src.ui.components.job_poster import display_job_poster_details
-            display_job_poster_details(profile_data)
-        else:
-            st.warning("⚠️ Profile is private or could not be accessed")
-            st.info("💡 This is common for private LinkedIn profiles and does not affect fraud analysis")
-        
-        # Cleanup button
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            if st.button("🗑️ Clear", key=f"clear_{profile_key}"):
-                for key in [status_key, data_key, error_key, f"{profile_key}_elapsed", timestamp_key, f"{profile_key}_fetch_start"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-        with col2:
-            st.caption("Profile data cached for this session")
-    
-    elif status == 'error':
-        error_msg = st.session_state[error_key] or "Unknown error"
-        st.error(f"❌ Profile fetching failed: {error_msg}")
-        
-        # Retry/dismiss buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 Retry", key=f"retry_{profile_key}"):
-                # Reset state to trigger new fetch
-                for key in [status_key, data_key, error_key, timestamp_key, f"{profile_key}_fetch_start"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-        with col2:
-            if st.button("❌ Dismiss", key=f"dismiss_{profile_key}"):
-                for key in [status_key, data_key, error_key, timestamp_key, f"{profile_key}_fetch_start"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.info("Profile fetch dismissed - fraud analysis above remains valid")
-                return
+# Fragment removed - now at module level
 
 
-def _handle_async_profile_fetching(profile_url: str, scraping_service) -> None:
-    """Handle async profile fetching with improved error handling and state management."""
-    
-    # Create collision-resistant unique key using URL-based hash
-    import hashlib
-    url_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
-    profile_key = f"profile_{url_hash}"
-    status_key = f"{profile_key}_status"
-    data_key = f"{profile_key}_data"
-    error_key = f"{profile_key}_error"
-    timestamp_key = f"{profile_key}_timestamp"
-    
-    # Check for stale data (older than 5 minutes)
-    current_time = time.time()
-    if timestamp_key in st.session_state:
-        if current_time - st.session_state[timestamp_key] > 300:  # 5 minutes
-            logger.info("Clearing stale profile data")
-            for key in [status_key, data_key, error_key, timestamp_key, f"{profile_key}_fetch_start"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-    
-    # Initialize session state for this profile if not exists
-    if status_key not in st.session_state:
-        st.session_state[status_key] = 'pending'
-        st.session_state[data_key] = None
-        st.session_state[error_key] = None
-        # Initialize with actual start time for immediate timer display
-        st.session_state[timestamp_key] = current_time
-        st.session_state[f"{profile_key}_fetch_start"] = current_time
-        
-        # Use a shared results dictionary to communicate with thread (Streamlit-compatible)
-        if 'async_results' not in st.session_state:
-            st.session_state['async_results'] = {}
-            
-        result_key = f"result_{profile_key}"
-        
-        # Start async profile fetch in background thread
-        def fetch_profile_async():
-            try:
-                # Record the actual start time locally
-                profile_start = time.time()
-                logger.info(f"Starting async profile fetch: {profile_url}")
-                profile_data = scraping_service.scrape_profile(profile_url)
-                profile_elapsed = time.time() - profile_start
-                
-                # Store result in shared dictionary (thread-safe)
-                st.session_state['async_results'][result_key] = {
-                    'status': 'complete',
-                    'data': profile_data,
-                    'elapsed': profile_elapsed,
-                    'timestamp': time.time()
-                }
-                
-                logger.info(f"Async profile fetch completed in {profile_elapsed:.1f}s")
-                
-            except Exception as e:
-                logger.error(f"Async profile fetch failed: {str(e)}", exc_info=True)
-                # Store error result in shared dictionary
-                st.session_state['async_results'][result_key] = {
-                    'status': 'error',
-                    'error': str(e),
-                    'timestamp': time.time()
-                }
-        
-        # Start the thread
-        try:
-            thread = threading.Thread(target=fetch_profile_async, daemon=True)
-            add_script_run_ctx(thread)  # Add Streamlit context for session state access
-            thread.start()
-            logger.info(f"Started async profile fetch thread for {profile_url}")
-        except Exception as e:
-            logger.error(f"Failed to start profile fetch thread: {e}")
-            st.session_state[status_key] = 'error'
-            st.session_state[error_key] = f"Failed to start background fetch: {e}"
-    
-    # Use fragment for profile display (auto-refreshes every 2 seconds without full page reload)
-    _profile_fragment(profile_url, scraping_service, profile_key, url_hash)

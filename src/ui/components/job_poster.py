@@ -28,6 +28,556 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 from src.ui.utils.streamlit_html import render_html_card, render_info_card, render_verification_badge
 
 
+def display_fraud_focused_profile(profile_data: Dict[str, Any], job_data: Dict[str, Any] = None) -> None:
+    """
+    Display profile as a unified access card/badge design like a professional ID card.
+    
+    Args:
+        profile_data (Dict[str, Any]): Raw profile data from Bright Data
+        job_data (Dict[str, Any]): Job posting data for comparison
+    """
+    if not profile_data:
+        st.warning("No profile data available")
+        return
+    
+    # Check if profile has success field and is successful
+    if not profile_data.get('success', True):
+        st.info("🔒 Profile is private - fraud analysis uses alternative indicators")
+        return
+    
+    # Extract fraud-relevant data (adapted for Bright Data response structure)
+    name = profile_data.get('name', 'Unknown')
+    position = profile_data.get('position', 'Not specified')  
+    current_company = profile_data.get('current_company', 'Not specified')
+    
+    # Handle location from city and country_code
+    city = profile_data.get('city', '')
+    country_code = profile_data.get('country_code', '')
+    if city and country_code:
+        location = f"{city}, {country_code}"
+    elif city:
+        location = city
+    elif country_code:
+        location = country_code
+    else:
+        location = profile_data.get('location', 'Not specified')
+    
+    about = profile_data.get('about', '')
+    
+    # Profile photo - use the correct 'avatar' field from Bright Data
+    profile_photo_url = profile_data.get('avatar')
+    
+    # Activity indicators - use the 'activity' array from Bright Data
+    activity_data = profile_data.get('activity', [])
+    activity_count = len(activity_data) if isinstance(activity_data, list) else 0
+    
+    # Trust score calculation - since no is_verified field, use trust indicators
+    recommendations_count = profile_data.get('recommendations_count', 0)
+    connections = profile_data.get('connections', 0)  
+    followers = profile_data.get('followers', 0)
+    honors_and_awards = profile_data.get('honors_and_awards', [])
+    has_awards = len(honors_and_awards) > 0 if isinstance(honors_and_awards, list) else False
+    
+    # Calculate trust score (0-5 points)
+    trust_score = 0
+    if recommendations_count > 0: trust_score += 1  # Has recommendations
+    if connections >= 500: trust_score += 1         # Well connected (500+)
+    if followers > 100: trust_score += 1            # Has followers
+    if has_awards: trust_score += 1                 # Has awards/honors
+    if profile_photo_url: trust_score += 1          # Has profile photo
+    
+    # Determine trust level and colors
+    if trust_score >= 4:
+        trust_level = "TRUSTED"
+        trust_color = "#4CAF50"
+        trust_icon = "🏆"
+        badge_border_color = "#4CAF50"
+    elif trust_score >= 2:
+        trust_level = "ESTABLISHED"
+        trust_color = "#FF9800"
+        trust_icon = "⭐"
+        badge_border_color = "#FF9800"
+    else:
+        trust_level = "NEW PROFILE"
+        trust_color = "#9E9E9E"
+        trust_icon = "👤"
+        badge_border_color = "#9E9E9E"
+    
+    # Company match logic
+    job_company = job_data.get('company_name', '') if job_data else ''
+    poster_current_company = profile_data.get('current_company', {}).get('name', '') if isinstance(profile_data.get('current_company'), dict) else str(current_company) if current_company != 'Not specified' else ''
+    
+    # Smart company matching
+    company_match = False
+    if poster_current_company and job_company:
+        poster_company_clean = poster_current_company.lower().replace(' limited', '').replace(' ltd', '').replace(' llc', '').replace(' inc', '')
+        job_company_clean = job_company.lower().replace(' limited', '').replace(' ltd', '').replace(' llc', '').replace(' inc', '')
+        
+        if any(word in poster_company_clean and word in job_company_clean 
+               for word in ['smartchoice', 'google', 'microsoft', 'apple', 'amazon'] 
+               if len(word) > 3) or poster_company_clean == job_company_clean:
+            company_match = True
+    
+    # Activity level
+    if activity_count > 10:
+        activity_status = "VERY ACTIVE"
+        activity_color = "#4CAF50"
+        activity_icon = "🔥"
+    elif activity_count > 3:
+        activity_status = "ACTIVE"
+        activity_color = "#FF9800"
+        activity_icon = "📊"
+    elif activity_count > 0:
+        activity_status = "SOME ACTIVITY"
+        activity_color = "#2196F3"
+        activity_icon = "📈"
+    else:
+        activity_status = "NO ACTIVITY"
+        activity_color = "#f44336"
+        activity_icon = "😴"
+    
+    # Create unified access card
+    st.markdown("### 👤 Job Poster Profile")
+    
+    # Main unified access card
+    # Prepare template variables
+    profile_photo_html = f'<img src="{profile_photo_url}" style="width: 100%; height: 100%; object-fit: cover;" alt="Profile Photo">' if profile_photo_url else '<span style="font-size: 48px; color: #999;">👤</span>'
+    photo_color = '#4CAF50' if profile_photo_url else '#f44336'
+    photo_status = '✅ PHOTO' if profile_photo_url else '❌ NO PHOTO'
+    company_bg = 'rgba(76, 175, 80, 0.1)' if company_match else 'rgba(255, 152, 0, 0.1)'
+    company_border = '#4CAF50' if company_match else '#FF9800'
+    company_icon = '🏢' if company_match else '🏭'
+    company_status = 'SAME COMPANY' if company_match else 'EXTERNAL POSTER'
+    recommendations_text = '✅ Recommendations' if recommendations_count > 0 else '❌ No Recommendations'
+    connections_text = '✅ Well Connected' if connections >= 500 else '❌ Limited Connections'
+    followers_text = '✅ Has Followers' if followers > 100 else '❌ Few Followers'
+    awards_text = '✅ Awards/Honors' if has_awards else '❌ No Awards'
+    photo_text = '✅ Profile Photo' if profile_photo_url else '❌ No Photo'
+    about_section = f'<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0;"><div style="color: #333; font-weight: bold; margin-bottom: 10px; font-size: 14px;">💭 ABOUT</div><div style="color: #666; font-size: 13px; line-height: 1.5;">{about[:200] + "..." if len(about) > 200 else about}</div></div>' if about and len(about.strip()) > 0 else ''
+    profile_id = f'{name.upper().replace(" ", "-")}-{str(hash(name))[-6:]}'
+    
+    access_card_html = '''
+    <div style="
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border: 3px solid {badge_border_color};
+        border-radius: 16px;
+        padding: 25px;
+        margin: 20px 0;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+        position: relative;
+        overflow: hidden;
+        max-width: 800px;
+        margin-left: auto;
+        margin-right: auto;
+    ">
+        <!-- Header stripe -->
+        <div style="
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 8px;
+            background: {badge_border_color};
+        "></div>
+        
+        <!-- Trust badge corner -->
+        <div style="
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: {trust_color};
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        ">
+            {trust_icon} {trust_level}
+        </div>
+        
+        <!-- Main content area -->
+        <div style="display: flex; align-items: flex-start; gap: 25px; margin-top: 15px;">
+            <!-- Profile photo section -->
+            <div style="flex-shrink: 0;">
+                <div style="
+                    width: 120px;
+                    height: 120px;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    border: 4px solid {badge_border_color};
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+                    background: #f5f5f5;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">
+                    {profile_photo_html}
+                </div>
+                <div style="
+                    text-align: center;
+                    margin-top: 10px;
+                    color: {photo_color};
+                    font-size: 11px;
+                    font-weight: bold;
+                ">
+                    {photo_status}
+                </div>
+            </div>
+            
+            <!-- Profile information section -->
+            <div style="flex-grow: 1;">
+                <!-- Name and title -->
+                <div style="margin-bottom: 20px;">
+                    <h2 style="
+                        margin: 0 0 8px 0;
+                        color: #333;
+                        font-size: 28px;
+                        font-weight: 700;
+                        line-height: 1.2;
+                    ">{name}</h2>
+                    <div style="
+                        color: #666;
+                        font-size: 16px;
+                        font-weight: 500;
+                        margin-bottom: 5px;
+                    ">{position}</div>
+                    <div style="
+                        color: #888;
+                        font-size: 14px;
+                    ">{current_company} • {location}</div>
+                </div>
+                
+                <!-- Status indicators row -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
+                    <!-- Company match -->
+                    <div style="
+                        background: {company_bg};
+                        border: 1px solid {company_border};
+                        border-radius: 10px;
+                        padding: 12px;
+                        text-align: center;
+                    ">
+                        <div style="font-size: 20px; margin-bottom: 5px;">{company_icon}</div>
+                        <div style="
+                            color: {company_border};
+                            font-size: 11px;
+                            font-weight: bold;
+                            text-transform: uppercase;
+                        ">
+                            {company_status}
+                        </div>
+                    </div>
+                    
+                    <!-- Activity level -->
+                    <div style="
+                        background: {activity_color}20;
+                        border: 1px solid {activity_color};
+                        border-radius: 10px;
+                        padding: 12px;
+                        text-align: center;
+                    ">
+                        <div style="font-size: 20px; margin-bottom: 5px;">{activity_icon}</div>
+                        <div style="
+                            color: {activity_color};
+                            font-size: 11px;
+                            font-weight: bold;
+                            text-transform: uppercase;
+                        ">
+                            {activity_status}
+                        </div>
+                        <div style="color: #666; font-size: 10px; margin-top: 2px;">
+                            {activity_count} items
+                        </div>
+                    </div>
+                    
+                    <!-- Network stats -->
+                    <div style="
+                        background: rgba(33, 150, 243, 0.1);
+                        border: 1px solid #2196F3;
+                        border-radius: 10px;
+                        padding: 12px;
+                        text-align: center;
+                    ">
+                        <div style="font-size: 20px; margin-bottom: 5px;">🌐</div>
+                        <div style="
+                            color: #2196F3;
+                            font-size: 11px;
+                            font-weight: bold;
+                            text-transform: uppercase;
+                        ">
+                            NETWORK
+                        </div>
+                        <div style="color: #666; font-size: 10px; margin-top: 2px;">
+                            {connections:,} connections
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Trust score details -->
+                <div style="
+                    background: {trust_color}10;
+                    border: 1px solid {trust_color};
+                    border-radius: 10px;
+                    padding: 15px;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="
+                                color: {trust_color};
+                                font-size: 14px;
+                                font-weight: bold;
+                                margin-bottom: 5px;
+                            ">
+                                Trust Indicators ({trust_score}/5)
+                            </div>
+                            <div style="color: #666; font-size: 12px;">
+                                {recommendations_text} • 
+                                {connections_text} • 
+                                {followers_text} • 
+                                {awards_text} • 
+                                {photo_text}
+                            </div>
+                        </div>
+                        <div style="
+                            color: {trust_color};
+                            font-size: 24px;
+                            font-weight: bold;
+                        ">
+                            {trust_score}/5
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- About section if available -->
+        {about_section}
+        
+        <!-- Footer ID stripe -->
+        <div style="
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #888;
+        ">
+            <div>FRAUDSPOT PROFILE ID</div>
+            <div style="font-family: monospace; font-weight: bold;">
+                {profile_id}
+            </div>
+        </div>
+    </div>
+    '''.format(
+        badge_border_color=badge_border_color,
+        trust_color=trust_color,
+        trust_icon=trust_icon,
+        trust_level=trust_level,
+        profile_photo_html=profile_photo_html,
+        photo_color=photo_color,
+        photo_status=photo_status,
+        name=name,
+        position=position,
+        current_company=current_company,
+        location=location,
+        company_bg=company_bg,
+        company_border=company_border,
+        company_icon=company_icon,
+        company_status=company_status,
+        activity_color=activity_color,
+        activity_icon=activity_icon,
+        activity_status=activity_status,
+        activity_count=activity_count,
+        connections=connections,
+        trust_score=trust_score,
+        recommendations_text=recommendations_text,
+        connections_text=connections_text,
+        followers_text=followers_text,
+        awards_text=awards_text,
+        photo_text=photo_text,
+        about_section=about_section,
+        profile_id=profile_id
+    )
+    
+    # Render HTML card using the same method as other working cards
+    render_html_card(access_card_html)
+
+
+def _render_photo_card(photo_url: str, has_photo: bool) -> None:
+    """Render profile photo card with actual image or placeholder."""
+    if has_photo and photo_url:
+        # Display actual photo
+        photo_html = f'''
+        <div style="text-align: center; padding: 15px; background: white; 
+                    border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <img src="{photo_url}" 
+                 style="width: 100px; height: 100px; border-radius: 50%; 
+                        object-fit: cover; border: 3px solid #4CAF50;">
+            <div style="margin-top: 10px; color: #4CAF50; font-weight: bold; font-size: 12px;">
+                ✅ Photo Available
+            </div>
+        </div>
+        '''
+    else:
+        # Placeholder
+        photo_html = '''
+        <div style="text-align: center; padding: 15px; background: white; 
+                    border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="width: 100px; height: 100px; border-radius: 50%; 
+                        background: #f5f5f5; display: flex; align-items: center; 
+                        justify-content: center; margin: 0 auto; border: 3px solid #ccc;">
+                <span style="font-size: 40px; color: #999;">👤</span>
+            </div>
+            <div style="margin-top: 10px; color: #f44336; font-weight: bold; font-size: 12px;">
+                ❌ No Photo
+            </div>
+        </div>
+        '''
+    
+    st.markdown(photo_html, unsafe_allow_html=True)
+
+
+def _render_basic_info_card(name: str, position: str, company: str, location: str) -> None:
+    """Render basic profile information card."""
+    info_html = f'''
+    <div style="background: white; padding: 20px; border-radius: 12px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1); height: 100%;">
+        <h3 style="margin: 0 0 15px 0; color: #333; font-size: 20px;">{name}</h3>
+        <div style="margin-bottom: 10px;">
+            <strong style="color: #666;">Position:</strong><br>
+            <span style="color: #333;">{position}</span>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <strong style="color: #666;">Company:</strong><br>
+            <span style="color: #333;">{company}</span>
+        </div>
+        <div>
+            <strong style="color: #666;">Location:</strong><br>
+            <span style="color: #333;">{location}</span>
+        </div>
+    </div>
+    '''
+    st.markdown(info_html, unsafe_allow_html=True)
+
+
+def _render_trust_card(trust_level: str, trust_label: str, trust_score: int) -> None:
+    """Render trust score card."""
+    if trust_level == "trusted":
+        color = "#4CAF50"
+        icon = "🏆"
+    elif trust_level == "established": 
+        color = "#FF9800"
+        icon = "⭐"
+    else:
+        color = "#9E9E9E"
+        icon = "👤"
+    
+    card_html = f'''
+    <div style="background: white; padding: 15px; border-radius: 12px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; height: 120px;
+                border-left: 4px solid {color};">
+        <div style="font-size: 32px; margin-bottom: 10px;">{icon}</div>
+        <div style="color: {color}; font-weight: bold; font-size: 14px;">{trust_label}</div>
+        <div style="color: #666; font-size: 12px; margin-top: 5px;">{trust_score}/5 Indicators</div>
+    </div>
+    '''
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+def _render_company_match_card(company_match: bool, match_type: str, poster_company: str, job_company: str) -> None:
+    """Render company match card."""
+    if company_match:
+        color = "#4CAF50"
+        icon = "🏢"
+        status = "Same Company"
+        detail = "Poster works here"
+    else:
+        color = "#FF9800"
+        icon = "🏭"
+        status = "Different Company"
+        detail = "External poster"
+    
+    card_html = f'''
+    <div style="background: white; padding: 15px; border-radius: 12px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; height: 120px;
+                border-left: 4px solid {color};">
+        <div style="font-size: 32px; margin-bottom: 10px;">{icon}</div>
+        <div style="color: {color}; font-weight: bold; font-size: 14px;">{status}</div>
+        <div style="color: #666; font-size: 12px; margin-top: 5px;">{detail}</div>
+    </div>
+    '''
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+def _render_activity_card(activity_count: int, has_activity: bool) -> None:
+    """Render activity level card."""
+    if activity_count > 10:
+        color = "#4CAF50"
+        icon = "🔥"
+        status = "Very Active"
+    elif activity_count > 3:
+        color = "#FF9800"  
+        icon = "📊"
+        status = "Active"
+    elif has_activity:
+        color = "#2196F3"
+        icon = "📈"
+        status = "Some Activity"
+    else:
+        color = "#f44336"
+        icon = "😴"
+        status = "No Activity"
+    
+    card_html = f'''
+    <div style="background: white; padding: 15px; border-radius: 12px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; height: 120px;
+                border-left: 4px solid {color};">
+        <div style="font-size: 32px; margin-bottom: 10px;">{icon}</div>
+        <div style="color: {color}; font-weight: bold; font-size: 14px;">{status}</div>
+        <div style="color: #666; font-size: 12px; margin-top: 5px;">{activity_count} Items</div>
+    </div>
+    '''
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+def _render_photo_status_card(has_photo: bool) -> None:
+    """Render photo status card."""
+    color = "#4CAF50" if has_photo else "#f44336"
+    icon = "📸" if has_photo else "🚫"
+    status = "Has Photo" if has_photo else "No Photo"
+    
+    card_html = f'''
+    <div style="background: white; padding: 15px; border-radius: 12px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; height: 120px;
+                border-left: 4px solid {color};">
+        <div style="font-size: 32px; margin-bottom: 10px;">{icon}</div>
+        <div style="color: {color}; font-weight: bold; font-size: 14px;">{status}</div>
+        <div style="color: #666; font-size: 12px; margin-top: 5px;">Profile Photo</div>
+    </div>
+    '''
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+def _render_about_card(about: str) -> None:
+    """Render about section card."""
+    # Truncate if too long
+    display_about = about[:300] + "..." if len(about) > 300 else about
+    
+    about_html = f'''
+    <div style="background: white; padding: 20px; border-radius: 12px; 
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 15px;
+                border-left: 4px solid #2196F3;">
+        <h4 style="margin: 0 0 15px 0; color: #333;">💭 About</h4>
+        <p style="margin: 0; color: #666; line-height: 1.6; font-size: 14px;">{display_about}</p>
+    </div>
+    '''
+    st.markdown(about_html, unsafe_allow_html=True)
+
+
 def display_job_poster_details(profile_data: Dict[str, Any]) -> None:
     """
     Display ALL profile data dynamically based on what's available.
@@ -195,51 +745,22 @@ def display_verification_badges(job_data: Dict[str, Any]) -> None:
     
     st.markdown("### ✅ Verification Badges")
     
-    # Define the 4 verification types using new fields
-    verification_types = [
-        {
-            'label': 'VERIFIED',
-            'key': 'job_poster_is_verified',
-            'icon': '✓',
-            'description': 'Account Verified'
-        },
-        {
-            'label': 'EXPERIENCE',
-            'key': 'job_poster_experiences',
-            'icon': '🎯',
-            'description': 'Relevant Experience'
-        },
-        {
-            'label': 'PHOTO',
-            'key': 'job_poster_has_photo',
-            'icon': '📸',
-            'description': 'Profile Photo'
-        },
-        {
-            'label': 'ACTIVE',
-            'key': 'poster_active',  # Keep from model compatibility
-            'icon': '🔥',
-            'description': 'Recent Activity'
-        }
-    ]
+    # Use centralized verification service
+    from ...services.verification_service import VerificationService
+    verification_service = VerificationService()
+    
+    # Get verification badges from service
+    badges = verification_service.get_verification_badges(job_data)
     
     # Create 4 columns for badges
     cols = st.columns(4)
     
-    for col, badge_info in zip(cols, verification_types):
+    for col, badge_info in zip(cols, badges):
         with col:
-            # Get verification status using new fields directly
-            if badge_info['key'] == 'job_poster_experiences':
-                # For experiences, check if there are any
-                experiences = job_data.get(badge_info['key'], [])
-                is_verified = len(experiences) > 0
-            else:
-                is_verified = bool(job_data.get(badge_info['key'], 0))
-            
             # Render the badge
             render_verification_badge(
                 label=badge_info['label'],
-                verified=is_verified,
+                verified=badge_info['verified'],
                 icon=badge_info['icon']
             )
             
@@ -294,14 +815,13 @@ def render_poster_summary(job_data: Dict[str, Any]) -> None:
     poster_name = job_data.get('job_poster_name', 'Unknown')
     poster_company = job_data.get('job_poster_current_company', company)
     
-    # Calculate quick verification score using new fields
-    verified_features = sum([
-        job_data.get('job_poster_is_verified', 0),
-        1 if len(job_data.get('job_poster_experiences', [])) > 0 else 0,
-        job_data.get('job_poster_has_photo', 0),
-        job_data.get('poster_active', 0)  # Keep from model compatibility
-    ])
-    verification_percentage = int((verified_features / 4) * 100)
+    # Use centralized verification service
+    from ...services.verification_service import VerificationService
+    verification_service = VerificationService()
+    
+    # Get verification summary from service
+    verification_summary = verification_service.get_verification_summary(job_data)
+    verification_percentage = verification_summary['percentage']
     
     # Choose color based on verification score
     if verification_percentage >= 75:
@@ -374,7 +894,7 @@ def _display_experience_timeline(experiences: List[Dict[str, str]]) -> None:
                 <span style="background: {color}; color: white; padding: 4px 12px; border-radius: 20px; 
                             font-size: 11px; font-weight: bold; white-space: nowrap;">{duration}</span>
             </div>
-            {'<p style="margin: 10px 0 0 0; color: #666; font-size: 14px; line-height: 1.5;">' + description + '</p>' if description else ''}
+            {f'<p style="margin: 10px 0 0 0; color: #666; font-size: 14px; line-height: 1.5;">{description}</p>' if description else ''}
         </div>
         '''
     

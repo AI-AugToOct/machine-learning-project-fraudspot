@@ -50,9 +50,10 @@ def display_comprehensive_fraud_dashboard(job_data: Dict[str, Any]) -> None:
     if confidence is None:
         st.warning("⚠️ No confidence score available from model")
     
-    # Company legitimacy from model data
+    # Company legitimacy from ML model predictions ONLY
     company_name = job_data.get('company_name', 'Unknown')
-    company_legitimacy = job_data.get('legitimacy_score')
+    model_metrics = job_data.get('metrics', {})
+    company_legitimacy = model_metrics.get('legitimacy_score')
     if company_legitimacy is None:
         company_legitimacy = 0.0  # Show actual missing data, no fake defaults
     
@@ -155,11 +156,12 @@ def _display_fraud_risk_gauge(fraud_risk_score: float, is_fraud: bool, confidenc
 def _display_key_metrics_with_tooltips(job_data: Dict[str, Any], fraud_risk: float, company_legitimacy: float) -> None:
     """Display key metrics with clear explanations and tooltips."""
     
-    # Calculate derived metrics
+    # Calculate derived metrics from model predictions ONLY
     overall_safety = 1.0 - fraud_risk
-    # Get actual scores without defaults - show N/A if missing
-    network_quality = job_data.get('network_quality_score')
-    profile_completeness = job_data.get('profile_completeness_score')
+    # Get scores from model metrics - these are the ML model's outputs
+    model_metrics = job_data.get('metrics', {})
+    network_quality = model_metrics.get('network_quality_score')
+    profile_completeness = model_metrics.get('profile_completeness_score')
     
     # Create metrics cards with explanations
     st.markdown("### 📊 Detailed Analysis Metrics")
@@ -244,31 +246,34 @@ def _display_fraud_factor_breakdown(job_data: Dict[str, Any]) -> None:
                 border: 1px solid #E5E7EB; margin: 16px 0; height: 500px; overflow-y: auto;">
     '''
     
-    # Define factors that contribute to fraud risk
+    # Get model metrics for ALL factors - NO hardcoded values
+    model_metrics = job_data.get('metrics', {})
+    
+    # Define factors that contribute to fraud risk - ALL FROM MODEL
     factors = [
         {
             'name': 'Profile Verification',
-            'score': 80 if job_data.get('job_poster_is_verified', 0) else 20,
+            'score': int(model_metrics.get('profile_completeness_score', 0) * 100),
             'explanation': 'Whether the job poster has a verified LinkedIn profile'
         },
         {
             'name': 'Contact Professional',
-            'score': 80,  # Assuming professional contact based on your example
+            'score': int(model_metrics.get('contact_professionalism_score', 0) * 100),
             'explanation': 'Quality and professionalism of contact information provided'
         },
         {
             'name': 'Salary Realistic',
-            'score': 80,  # Assuming realistic salary
+            'score': int(model_metrics.get('salary_realism_score', 0) * 100),
             'explanation': 'Whether the offered salary matches market expectations'
         },
         {
             'name': 'Experience History',
-            'score': len(job_data.get('job_poster_experiences', [])) * 20 if len(job_data.get('job_poster_experiences', [])) <= 5 else 100,
+            'score': _get_experience_score(job_data),
             'explanation': 'Professional experience shown in job poster profile'
         },
         {
             'name': 'Social Proof',
-            'score': 0,  # Based on your example showing 0%
+            'score': _get_social_proof_score(job_data),
             'explanation': 'Recommendations and endorsements from professional network'
         }
     ]
@@ -306,75 +311,113 @@ def _display_company_verification(job_data: Dict[str, Any], legitimacy_score: fl
     
     company_name = job_data.get('company_name', 'Unknown Company')
     
-    # For HungerStation, show positive verification
-    if 'hunger' in company_name.lower():
-        verification_html = f'''
-        <div style="background: #D1FAE5; border-radius: 16px; padding: 24px; 
-                    border: 1px solid #10B981; margin: 16px 0; height: 500px; overflow-y: auto;">
-            
-            <div style="display: flex; align-items: center; margin-bottom: 16px;">
-                <div style="font-size: 40px; margin-right: 16px;">🏢</div>
-                <div>
-                    <h3 style="margin: 0; color: #059669; font-size: 20px;">
-                        {company_name}
-                    </h3>
-                    <div style="color: #065F46; margin-top: 4px;">
-                        Legitimacy Score: {legitimacy_score:.1%}
-                    </div>
-                </div>
-            </div>
-            
-            <div style="background: rgba(255,255,255,0.7); padding: 16px; border-radius: 12px;">
-                <h4 style="margin: 0 0 12px 0; color: #374151;">Company Assessment</h4>
-                <div style="color: #6B7280; font-size: 14px; line-height: 1.6;">
-                    Company has moderate legitimacy with some verification gaps. This is a known company 
-                    in the food delivery industry with established operations.
-                </div>
-                
-                <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 16px; font-weight: 600; color: #374151;">0</div>
-                        <div style="font-size: 12px; color: #6B7280;">LinkedIn Employees</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 16px; font-weight: 600; color: #374151;">0</div>
-                        <div style="font-size: 12px; color: #6B7280;">Followers</div>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 16px; padding: 12px; background: #FEF3C7; border-radius: 8px; border-left: 4px solid #F59E0B;">
-                    <div style="font-size: 12px; color: #92400E; font-weight: 600;">
-                        ❌ No Website • 🏗️ Not Specified founding date
-                    </div>
-                </div>
-            </div>
-        </div>
-        '''
+    # Extract actual company data (raw data)
+    company_followers = job_data.get('company_followers', 0)
+    company_employees = job_data.get('company_employees', 0)
+    company_founded = job_data.get('company_founded', 0)
+    company_enrichment_success = job_data.get('company_enrichment_success', False)
+    
+    # Get company scores from ML model predictions ONLY
+    model_metrics = job_data.get('metrics', {})
+    network_quality_score = model_metrics.get('network_quality_score', 0)
+    if network_quality_score is None:
+        network_quality_score = 0
+    company_followers_score = model_metrics.get('company_followers_score', 0) or 0
+    company_employees_score = model_metrics.get('company_employees_score', 0) or 0
+    company_founded_score = model_metrics.get('company_founded_score', 0) or 0
+    
+    # Determine company status and color based on actual data
+    if company_enrichment_success and (company_followers > 0 or company_employees > 0):
+        # Company data available - determine status
+        if legitimacy_score >= 0.7:
+            bg_color = "#D1FAE5"
+            border_color = "#10B981"
+            text_color = "#059669"
+            status_message = "Company verification successful with good standing."
+        elif legitimacy_score >= 0.4:
+            bg_color = "#FEF3C7"
+            border_color = "#F59E0B"
+            text_color = "#92400E"
+            status_message = "Company data available but verification shows some concerns."
+        else:
+            bg_color = "#FECACA"
+            border_color = "#EF4444"
+            text_color = "#DC2626"
+            status_message = "Company verification shows significant red flags."
     else:
-        # Generic company display
-        verification_html = f'''
-        <div style="background: #FEF3C7; border-radius: 16px; padding: 24px; 
-                    border: 1px solid #F59E0B; margin: 16px 0; height: 500px; overflow-y: auto;">
-            
-            <div style="display: flex; align-items: center; margin-bottom: 16px;">
-                <div style="font-size: 40px; margin-right: 16px;">🏢</div>
-                <div>
-                    <h3 style="margin: 0; color: #92400E; font-size: 20px;">
-                        {company_name}
-                    </h3>
-                    <div style="color: #78350F; margin-top: 4px;">
-                        Legitimacy Score: {legitimacy_score:.1%}
-                    </div>
-                </div>
+        # Limited or no company data
+        bg_color = "#FEF3C7"
+        border_color = "#F59E0B"
+        text_color = "#92400E"
+        status_message = "Limited company information available. Verification status unclear."
+    
+    # Build company metrics display
+    metrics_html = ""
+    
+    # Company size and network metrics
+    metrics_html += f'''
+        <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+            <div style="text-align: center; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px;">
+                <div style="font-size: 16px; font-weight: 600; color: #374151;">{company_followers:,}</div>
+                <div style="font-size: 12px; color: #6B7280;">LinkedIn Followers</div>
+                <div style="font-size: 10px; color: #9CA3AF;">Score: {'N/A' if company_followers_score is None else f'{company_followers_score:.1%}'}</div>
             </div>
-            
-            <div style="background: rgba(255,255,255,0.7); padding: 16px; border-radius: 12px;">
-                <div style="color: #6B7280; font-size: 14px; line-height: 1.6;">
-                    Limited company information available. Verification status unclear.
+            <div style="text-align: center; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px;">
+                <div style="font-size: 16px; font-weight: 600; color: #374151;">{company_employees:,}</div>
+                <div style="font-size: 12px; color: #6B7280;">Employees</div>
+                <div style="font-size: 10px; color: #9CA3AF;">Score: {'N/A' if company_employees_score is None else f'{company_employees_score:.1%}'}</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px;">
+                <div style="font-size: 16px; font-weight: 600; color: #374151;">{'N/A' if company_founded <= 0 else company_founded}</div>
+                <div style="font-size: 12px; color: #6B7280;">Founded</div>
+                <div style="font-size: 10px; color: #9CA3AF;">Score: {'N/A' if company_founded_score is None else f'{company_founded_score:.1%}'}</div>
+            </div>
+        </div>
+    '''
+    
+    # Network quality and additional metrics
+    metrics_html += f'''
+        <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div style="text-align: center; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px;">
+                <div style="font-size: 16px; font-weight: 600; color: #374151;">{'N/A' if network_quality_score is None else f'{network_quality_score:.1%}'}</div>
+                <div style="font-size: 12px; color: #6B7280;">Network Quality</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px;">
+                <div style="font-size: 16px; font-weight: 600; color: #374151;">{'N/A' if legitimacy_score is None else f'{legitimacy_score:.1%}'}</div>
+                <div style="font-size: 12px; color: #6B7280;">Overall Legitimacy</div>
+            </div>
+        </div>
+    '''
+    
+    # Generic company display with actual data
+    verification_html = f'''
+    <div style="background: {bg_color}; border-radius: 16px; padding: 24px; 
+                border: 1px solid {border_color}; margin: 16px 0; height: 500px; overflow-y: auto;">
+        
+        <div style="display: flex; align-items: center; margin-bottom: 16px;">
+            <div style="font-size: 40px; margin-right: 16px;">🏢</div>
+            <div>
+                <h3 style="margin: 0; color: {text_color}; font-size: 20px;">
+                    {company_name}
+                </h3>
+                <div style="color: {text_color}; margin-top: 4px;">
+                    Legitimacy Score: {legitimacy_score:.1%}
                 </div>
             </div>
         </div>
-        '''
+        
+        <div style="background: rgba(255,255,255,0.7); padding: 16px; border-radius: 12px;">
+            <h4 style="margin: 0 0 12px 0; color: #374151;">Company Assessment</h4>
+            <div style="color: #6B7280; font-size: 14px; line-height: 1.6;">
+                {status_message}
+            </div>
+            
+            {metrics_html}
+            
+            {'<div style="margin-top: 16px; padding: 12px; background: #D1FAE5; border-radius: 8px; border-left: 4px solid #10B981;"><div style="font-size: 12px; color: #065F46; font-weight: 600;">✅ Company data enriched via API</div></div>' if company_enrichment_success else '<div style="margin-top: 16px; padding: 12px; background: #FEF3C7; border-radius: 8px; border-left: 4px solid #F59E0B;"><div style="font-size: 12px; color: #92400E; font-weight: 600;">⚠️ Limited company data available</div></div>'}
+        </div>
+    </div>
+    '''
     
     render_html_card(verification_html)
 
@@ -536,6 +579,42 @@ def _display_final_recommendation(fraud_risk: float, is_fraud: bool, confidence:
     '''
     
     render_html_card(recommendation_html)
+
+
+def _get_experience_score(job_data: Dict[str, Any]) -> int:
+    """
+    Get experience score from ML model predictions ONLY.
+    
+    Args:
+        job_data: Job posting data dict (contains model prediction results)
+        
+    Returns:
+        int: Experience score (0-100) from model
+    """
+    # CRITICAL: Use experience_score from model prediction - no independent calculation
+    model_metrics = job_data.get('metrics', {})
+    experience_score = model_metrics.get('experience_score', 0)
+    
+    # If model hasn't calculated it yet, return 0 (should not happen in production)
+    return int(experience_score) if experience_score is not None else 0
+
+
+def _get_social_proof_score(job_data: Dict[str, Any]) -> int:
+    """
+    Get social proof score from ML model predictions ONLY.
+    
+    Args:
+        job_data: Job posting data dict (contains model prediction results)
+        
+    Returns:
+        int: Social proof score (0-100) from model
+    """
+    # CRITICAL: Use social_proof_score from model prediction - no independent calculation
+    model_metrics = job_data.get('metrics', {})
+    social_proof_score = model_metrics.get('social_proof_score', 0)
+    
+    # If model hasn't calculated it yet, return 0 (should not happen in production)
+    return int(social_proof_score) if social_proof_score is not None else 0
 
 
 # Export the main function for the modern dashboard

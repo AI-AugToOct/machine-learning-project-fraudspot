@@ -29,6 +29,10 @@ class SerializationService:
     
     def __init__(self):
         """Initialize the serialization service."""
+        # Initialize verification service for centralized verification logic
+        from .verification_service import VerificationService
+        self.verification_service = VerificationService()
+        
         logger.info("SerializationService initialized")
     
     def api_to_dataframe(self, api_responses: Union[Dict[str, Any], List[Dict[str, Any]]]) -> pd.DataFrame:
@@ -141,10 +145,24 @@ class SerializationService:
             # Use core data processor
             ml_ready_data = prepare_scraped_data_for_ml(raw_data)
             
+            # Use verification service to extract and validate verification features
+            verification_features = self.verification_service.extract_verification_features(ml_ready_data)
+            
+            # Update ml_ready_data with verified features
+            ml_ready_data.update(verification_features)
+            
             # Generate complete feature set
             from ..core import FeatureEngine
             feature_engine = FeatureEngine()
             features_df = feature_engine.generate_complete_feature_set(ml_ready_data)
+            
+            # Log verification status using centralized service
+            poster_score = self.verification_service.calculate_verification_score(ml_ready_data)
+            logger.info(f"Verification fields ready - poster_score: {poster_score}/4 "
+                       f"(verified:{verification_features['poster_verified']}, "
+                       f"photo:{verification_features['poster_photo']}, "
+                       f"exp:{verification_features['poster_experience']}, "
+                       f"active:{verification_features['poster_active']})")
             
             # Return as dictionary
             return features_df.iloc[0].to_dict()
@@ -296,18 +314,22 @@ class SerializationService:
     
     def _create_minimal_record(self, original_data: Dict[str, Any], error_message: str) -> Dict[str, Any]:
         """Create minimal record from failed processing."""
-        return {
+        # Use verification service to get default verification features
+        verification_features = self.verification_service.extract_verification_features({})
+        
+        minimal_record = {
             'job_title': str(original_data.get('job_title', 'Processing Error')),
             'job_description': f"Processing failed: {error_message}",
             'company_name': str(original_data.get('company_name', 'Unknown')),
             'location': str(original_data.get('location', 'Unknown')),
             'fraudulent': 0,
-            'poster_verified': 0,
-            'poster_photo': 0,
-            'poster_experience': 0,
-            'poster_active': 0,
             'language': 0
         }
+        
+        # Add verification features
+        minimal_record.update(verification_features)
+        
+        return minimal_record
     
     def _create_minimal_ml_record(self, original_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create minimal ML record with all required columns."""
@@ -323,6 +345,10 @@ class SerializationService:
                 record[col] = 0
             else:
                 record[col] = str(original_data.get(col, ''))
+        
+        # Ensure verification features are properly set using verification service
+        verification_features = self.verification_service.extract_verification_features(original_data)
+        record.update(verification_features)
         
         return record
     

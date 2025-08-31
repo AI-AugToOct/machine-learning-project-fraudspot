@@ -530,28 +530,56 @@ def prepare_scraped_data_for_ml(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         else:
             ml_data['location'] = str(location_raw) if location_raw else 'Unknown'
         
-        # Extract company information
-        company_raw = raw_data.get('company', {})
+        # Extract company information - handle multiple field names
+        company_raw = raw_data.get('company', raw_data.get('company_name', {}))
         if isinstance(company_raw, dict):
             ml_data['company'] = company_raw.get('name', 'Unknown')
         else:
             ml_data['company'] = str(company_raw) if company_raw else 'Unknown'
         
         # Extract poster information and verification features
-        poster_raw = raw_data.get('poster', {})
+        # Check multiple locations where poster data might be stored
         company_name = ml_data['company']
+        poster_raw = None
         
-        if isinstance(poster_raw, dict):
+        # Option 1: Nested poster dict (expected by old code)
+        if 'poster' in raw_data and isinstance(raw_data['poster'], dict):
+            poster_raw = raw_data['poster']
+        
+        # Option 2: Bright Data puts profile data at root level
+        elif any(key in raw_data for key in ['avatar', 'connections', 'current_company', 'experience']):
+            poster_raw = raw_data  # Use entire raw_data as poster data
+        
+        # Option 3: Pre-extracted verification fields at root level
+        elif all(key in raw_data for key in ['poster_verified', 'poster_photo', 'poster_experience', 'poster_active']):
+            # Already processed by scraper, use directly
+            ml_data.update({
+                'poster_verified': int(raw_data.get('poster_verified', 0)),
+                'poster_photo': int(raw_data.get('poster_photo', 0)),
+                'poster_experience': int(raw_data.get('poster_experience', 0)),
+                'poster_active': int(raw_data.get('poster_active', 0))
+            })
+            logger.info("Using pre-extracted verification fields from scraper")
+        
+        # Extract features if we found poster data
+        if poster_raw:
             verification_features = _extract_verification_features(poster_raw, company_name)
             ml_data.update(verification_features)
-        else:
-            # Default verification features
+            logger.info(f"Extracted verification features: {verification_features}")
+        elif 'poster_verified' not in ml_data:
+            # Default verification features only if not already set
             ml_data.update({
                 'poster_verified': 0,
                 'poster_photo': 0,
                 'poster_experience': 0,
                 'poster_active': 0
             })
+            logger.warning("No poster data found, using default verification features")
+        
+        # Calculate poster_score using VerificationService (centralized logic)
+        from ..services.verification_service import VerificationService
+        verification_service = VerificationService()
+        ml_data['poster_score'] = verification_service.calculate_verification_score(ml_data)
         
         # Set default fraudulent label
         ml_data['fraudulent'] = raw_data.get('fraudulent', 0)
@@ -565,51 +593,92 @@ def prepare_scraped_data_for_ml(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _extract_verification_features(poster: Dict[str, Any], company_name: str) -> Dict[str, int]:
-    """Extract verification features from job poster data."""
+    """
+    Extract verification features from ACTUAL Bright Data profile response.
+    
+    Based on real API structure from person.json, NOT fictional fields.
+    LinkedIn doesn't provide 'is_verified' - we infer from profile quality indicators.
+    """
     verification_features = {}
     
-    # poster_verified: Check for verification indicators
+    # 1. POSTER_VERIFIED: Profile completeness and credibility check
+    # LinkedIn doesn't provide "is_verified" field - we infer from profile quality
+    connections = poster.get('connections', 0)
+    experience_count = len(poster.get('experience', []))
+    education_count = len(poster.get('education', []))
+    recommendations = poster.get('recommendations_count', 0)
+    followers = poster.get('followers', 0)
+    
+    # Trust Indicator based verification (align with UI Trust Indicators 5/5)
+    # poster_verified = Has recommendations OR awards (credibility indicators)
+    honors_and_awards = poster.get('honors_and_awards', [])
+    has_awards = len(honors_and_awards) > 0 if isinstance(honors_and_awards, list) else False
+    
     verification_features['poster_verified'] = 1 if (
-        poster.get('is_verified') or 
-        poster.get('is_premium') or
-        poster.get('verified_badge') or
-        poster.get('name')  # Having a name indicates some verification
+        recommendations > 0 or has_awards  # Has recommendations OR awards (Trust Indicators)
     ) else 0
     
-    # poster_photo: Check for profile photo
+    # 2. POSTER_PHOTO: Check avatar field (Bright Data uses 'avatar', not 'profile_photo_url')
     verification_features['poster_photo'] = 1 if (
-        poster.get('profile_photo_url') or 
-        poster.get('profile_image') or
-        poster.get('photo_url')
+        poster.get('avatar') and  # Has profile picture URL
+        not poster.get('default_avatar', False)  # Not using LinkedIn's default avatar
     ) else 0
     
-    # poster_experience: Check for experience at posting company
-    poster_experience = poster.get('experience', [])
-    company_lower = company_name.lower()
-    poster_exp = 0
+    # 3. POSTER_EXPERIENCE: Match current company with job posting company
+    # First check if UI has already determined "SAME COMPANY" status
+    has_company_experience = False
     
-    if poster_experience and company_lower:
-        for exp in poster_experience:
+    # Check if poster is currently at the job posting company (most direct indicator)
+    current_company = poster.get('current_company', {})
+    if isinstance(current_company, dict):
+        current_company_name = current_company.get('name', '')
+        if current_company_name and company_name:
+            # Use verification service for smart fuzzy matching
+            from ..services.verification_service import VerificationService
+            verification_service = VerificationService()
+            if verification_service.company_matches(company_name, current_company_name):
+                has_company_experience = True
+                logger.info(f"✅ SAME COMPANY: '{company_name}' matches current company '{current_company_name}'")
+    
+    # Also check full experience history for company match
+    if not has_company_experience and company_name:
+        from ..services.verification_service import VerificationService
+        verification_service = VerificationService()
+        for exp in poster.get('experience', []):
             if isinstance(exp, dict):
-                exp_company = exp.get('company_name', '').lower()
-                if company_lower in exp_company or exp_company in company_lower:
-                    poster_exp = 1
+                exp_company = exp.get('company', '')
+                if exp_company and verification_service.company_matches(company_name, exp_company):
+                    has_company_experience = True
+                    logger.info(f"✅ SAME COMPANY: '{company_name}' matches experience company '{exp_company}'")
                     break
-            elif isinstance(exp, str) and company_lower in exp.lower():
-                poster_exp = 1
-                break
     
-    verification_features['poster_experience'] = poster_exp
+    # Additional check: if poster's job title includes "recruiter" or "consultant" at similar company
+    poster_title = poster.get('headline', '').lower()
+    if not has_company_experience and 'recruiter' in poster_title or 'consultant' in poster_title:
+        if company_name and company_name.lower() in poster_title:
+            has_company_experience = True
+            logger.info(f"✅ SAME COMPANY: Recruiter/consultant at '{company_name}' detected")
     
-    # poster_active: Check for activity indicators
+    verification_features['poster_experience'] = 1 if has_company_experience else 0
+    
+    # 4. POSTER_ACTIVE: Check activity and engagement (Bright Data provides 'activity' array)
+    activity_count = len(poster.get('activity', []))
+    
     verification_features['poster_active'] = 1 if (
-        poster.get('num_posts', 0) > 0 or
-        poster.get('recent_activity') or
-        poster.get('last_active') or
-        poster.get('title')  # Having a title indicates activity
+        activity_count > 0 or  # Has recent LinkedIn activity (likes, posts, comments)
+        followers > 100 or  # Has meaningful following (indicates engagement)
+        connections >= 500  # Very active networker
     ) else 0
+    
+    logger.info(f"Verification extraction: verified={verification_features['poster_verified']}, "
+                f"photo={verification_features['poster_photo']}, "
+                f"experience={verification_features['poster_experience']}, "
+                f"active={verification_features['poster_active']}")
     
     return verification_features
+
+
+# Note: _companies_match function replaced by VerificationService.company_matches()
 
 
 # Export main classes and functions

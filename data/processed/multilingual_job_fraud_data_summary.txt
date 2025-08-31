@@ -1,0 +1,42 @@
+
+MULTILINGUAL JOB FRAUD DATASET SUMMARY (WITH COMPANY ENRICHMENT)
+======================================================================
+
+Dataset Statistics:
+- Total Records: 19,903
+- Total Features: 39
+- Real Jobs: 18,484
+- Fake Jobs: 1,419
+- Fraud Rate: 7.13%
+
+Language Distribution:
+language
+0    17880
+1     2023
+
+Poster Verification Stats:
+- Real jobs with verified poster: 15,695
+- Real jobs with experienced poster: 13,874
+- Fake jobs with unverified poster: 1,199
+- Fake jobs with inexperienced poster: 1,298
+
+Company Verification Stats (NEW):
+- Legitimate companies - Avg followers: 2701
+- Legitimate companies - Avg employees: 24
+- Fraudulent companies - Avg followers: 2
+- Fraudulent companies - Avg employees: 0
+- Network Quality Score Difference: 0.64 vs 0.04
+
+Feature Engineering Stats:
+- Avg Content Quality Score: 0.414
+- Avg Legitimacy Score: 0.676
+- Avg Verification Score: 0.722
+- Avg Poster Score: 0.682
+- Avg Company Network Quality: 0.598
+- Avg Company Profile Completeness: 0.861
+
+Data Quality:
+- Missing values in fraudulent column: 0
+- Invalid fraudulent values: 0
+- Verification logic correct: True
+- Company enrichment successful: TRUE

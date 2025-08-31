@@ -55,6 +55,115 @@ python train_model_cli.py --dataset combined --model naive_bayes
 python train_model_cli.py # enjoy interactive 
 ```
 
+## ⚠️ IMPORTANT: Retraining Required for v3.0.0 Verification System
+
+**🛡️ Critical Update**: FraudSpot v3.0.0 introduces a centralized verification system that fixes critical bugs in verification feature extraction. **All models must be retrained** due to significant changes in feature values.
+
+### Why Retraining is Required
+
+**Before v3.0.0**:
+- Verification features (`poster_verified`, `poster_experience`, `poster_photo`, `poster_active`) always defaulted to **0**
+- This caused a +35% false positive baseline for all jobs
+- `poster_score` was incorrectly normalized to 0-1 range instead of 0-4
+
+**After v3.0.0**:
+- Verification features correctly extracted from real Bright Data LinkedIn API responses
+- `poster_score` fixed to proper 0-4 integer scale (not normalized)
+- New features added: `is_highly_verified`, `is_unverified`, `verification_ratio`
+- Intelligent fuzzy company matching using rapidfuzz library
+
+### New Verification Features
+
+| Feature | Description | Impact on Training |
+|---------|-------------|-------------------|
+| `poster_verified` | Real LinkedIn verification from avatar presence | Now varies 0-1, was always 0 |
+| `poster_experience` | Fuzzy-matched company experience | Now intelligent matching, was always 0 |
+| `poster_photo` | Profile photo validation | Now real validation, was always 0 |
+| `poster_active` | LinkedIn connections > 0 | Now real activity check, was always 0 |
+| `poster_score` | Sum of verification features (0-4) | **CRITICAL**: Now 0-4 integer, was normalized to 0-1 |
+| `is_highly_verified` | poster_score >= 3 | **NEW FEATURE** |
+| `is_unverified` | poster_score == 0 | **NEW FEATURE** |
+| `verification_ratio` | poster_score / 4.0 | **NEW FEATURE** |
+
+### Retraining Impact
+
+**Feature Importance Changes**:
+- `poster_score` becomes highly predictive (was useless before)
+- Verification features now contribute meaningful signal
+- Model decision boundaries will shift significantly
+- Ensemble voting weights may need adjustment
+
+**Expected Performance Improvements**:
+- Reduced false positive rate (from +35% baseline to risk-adjusted 0-35%)
+- Better detection of legitimate high-verification jobs
+- More accurate risk classification based on poster credibility
+
+### Quick Retraining Commands
+
+```bash
+# Retrain all ensemble models with new verification features
+python train_model_cli.py --model all_models --dataset combined --force-retrain
+
+# Train individual models to compare performance
+python train_model_cli.py --model random_forest --dataset combined
+python train_model_cli.py --model svm --dataset combined  
+python train_model_cli.py --model logistic_regression --dataset combined
+python train_model_cli.py --model naive_bayes --dataset combined
+
+# Verify verification feature extraction is working
+python -c "
+from src.services.verification_service import VerificationService
+vs = VerificationService()
+test_job = {
+    'avatar': 'https://media.licdn.com/image.jpg',
+    'connections': 500,
+    'experience': [{'company': {'name': 'SmartChoice International'}}],
+    'company_name': 'SmartChoice UAE'
+}
+features = vs.extract_verification_features(test_job)
+score = vs.calculate_verification_score(test_job)
+print(f'✅ Verification features: {features}')
+print(f'✅ Poster score: {score}/4')
+"
+```
+
+### Validation After Retraining
+
+```python
+# Test that verification features are working correctly
+from src.core.fraud_detector import FraudDetector
+
+detector = FraudDetector()
+
+# High verification job should be low risk
+high_verification_job = {
+    'job_title': 'Software Engineer',
+    'company_name': 'SmartChoice International',
+    'avatar': 'https://media.licdn.com/valid.jpg',
+    'connections': 500,
+    'experience': [{'company': {'name': 'SmartChoice International'}}]
+}
+
+result = detector.predict_fraud(high_verification_job, use_ml=True)
+print(f"High verification result: {result['risk_level']} (should be LOW/VERY LOW)")
+print(f"Poster score: {result.get('poster_score', 'missing')}/4")
+
+# Low verification job should be high risk  
+low_verification_job = {
+    'job_title': 'Make money fast',
+    'company_name': 'Unknown Company'
+    # No avatar, connections, or experience
+}
+
+result = detector.predict_fraud(low_verification_job, use_ml=True)
+print(f"Low verification result: {result['risk_level']} (should be HIGH/VERY HIGH)")
+print(f"Poster score: {result.get('poster_score', 'missing')}/4")
+```
+
+**🚨 Do Not Use Old Models**: Models trained before v3.0.0 will perform poorly with the new verification feature values and should not be used in production.
+
+---
+
 ## 📊 Dataset Overview v3.0.0
 
 ### Multilingual Dataset (Enhanced)

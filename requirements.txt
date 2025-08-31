@@ -23,6 +23,9 @@ spacy>=3.8.0
 textstat>=0.7.4
 langdetect>=1.0.9
 
+# String matching and similarity
+rapidfuzz>=3.5.0
+
 # Interactive CLI (for training script)
 rich>=13.0.0
 questionary>=2.0.0

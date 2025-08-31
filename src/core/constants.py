@@ -241,7 +241,7 @@ class DataConstants:
     SCORE_COLUMNS = [
         'description_length_score', 'professional_language_score',
         'urgency_language_score', 'contact_professionalism_score',
-        'verification_score', 'content_quality_score', 'legitimacy_score', 'poster_score'
+        'verification_score', 'content_quality_score', 'legitimacy_score'
     ]
     
     # Required job posting sections
@@ -273,22 +273,26 @@ class DataConstants:
 class ModelConstants:
     """Single source for all ML model constants"""
     
-    # ML features only (numerical columns for training - 19 total, NO job_id)
+    # ML features only (numerical columns for training - 27 total, NO job_id)
     ML_FEATURE_COLUMNS = [
         # Binary indicators
         'has_company_logo', 'has_questions',
         # Poster verification columns (CRITICAL PREDICTORS)
-        'poster_verified', 'poster_experience', 'poster_photo', 'poster_active',
+        'poster_verified', 'poster_experience', 'poster_photo', 'poster_active', 'poster_score',
+        'is_highly_verified', 'is_unverified', 'verification_ratio',
         # Language and encoding
         'language', 'experience_level_encoded', 'education_level_encoded', 
         'employment_type_encoded',
         # Computed score columns (calculated from text)
         'description_length_score', 'title_word_count', 'professional_language_score',
         'urgency_language_score', 'contact_professionalism_score',
-        'verification_score', 'content_quality_score', 'legitimacy_score', 'poster_score'
+        'verification_score', 'content_quality_score', 'legitimacy_score',
+        # Company verification features (NEW - 5 additional features)
+        'company_followers_score', 'company_employees_score', 'company_founded_score', 
+        'network_quality_score', 'company_legitimacy_score'
     ]
     
-    # Required feature columns (30 total - includes ML features + text for processing + target)
+    # Required feature columns (33 total - includes ML features + text for processing + target)
     # Composed from ML_FEATURE_COLUMNS + DataConstants.TEXT_COLUMNS + raw categorical + target
     REQUIRED_FEATURE_COLUMNS = (ML_FEATURE_COLUMNS + 
                                 DataConstants.TEXT_COLUMNS + 

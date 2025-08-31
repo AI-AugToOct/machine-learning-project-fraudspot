@@ -85,7 +85,7 @@ def render_ensemble_voting_analysis():
     if st.button("🔍 Analyze Ensemble Voting", type="primary"):
         with st.spinner("Running ensemble analysis..."):
             try:
-                from ...pipeline.pipeline_manager import PipelineManager
+                from src.pipeline.pipeline_manager import PipelineManager
                 pm = PipelineManager()
                 
                 # Get prediction
@@ -193,7 +193,7 @@ def render_ensemble_model_status():
     st.markdown("#### 📊 Ensemble Model Status")
     
     try:
-        from ...core.ensemble_predictor import EnsemblePredictor
+        from src.core.ensemble_predictor import EnsemblePredictor
         ensemble = EnsemblePredictor()
         
         # Load models first, then get status
