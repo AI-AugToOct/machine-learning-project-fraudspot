@@ -2,8 +2,8 @@
 
 **FraudSpot v3.0 External API Integration Documentation**
 
-**Version:** 3.0.0  
-**Last Updated:** August 30, 2025  
+**Version:** 3.0.0 (Post-Refactoring)  
+**Last Updated:** September 4, 2025  
 **Status:** Production Ready
 
 ---
@@ -15,10 +15,11 @@
 3. [Verification Service Integration](#verification-service-integration)
 4. [API Response Processing](#api-response-processing)
 5. [Field Mapping Reference](#field-mapping-reference)
-6. [Error Handling](#error-handling)
-7. [Rate Limiting & Performance](#rate-limiting--performance)
-8. [Testing & Validation](#testing--validation)
-9. [Migration Notes](#migration-notes)
+6. [FraudDetectionPipeline Integration](#frauddetectionpipeline-integration)
+7. [Error Handling](#error-handling)
+8. [Rate Limiting & Performance](#rate-limiting--performance)
+9. [Testing & Validation](#testing--validation)
+10. [Migration Notes](#migration-notes)
 
 ---
 

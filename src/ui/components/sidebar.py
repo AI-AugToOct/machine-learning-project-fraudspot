@@ -34,14 +34,17 @@ def render_sidebar() -> None:
         # Ensemble Model System (No Selection - Always Use Ensemble)
         st.subheader("🤖 Ensemble Model System")
         
-        # Show ensemble status and models
+        # Show unified pipeline status and models
         try:
-            from ...core.ensemble_predictor import EnsemblePredictor
-            ensemble = EnsemblePredictor()
-            
-            # Load models first, then get status
-            ensemble.load_models()
-            status = ensemble.get_model_status()
+            # Use cached fraud pipeline from session state (initialized in main.py)
+            if 'cached_fraud_pipeline' in st.session_state:
+                pipeline = st.session_state['cached_fraud_pipeline']
+                status = {'models_loaded': len(pipeline.models), 'model_status': {name: 'loaded' if name in pipeline.models else 'missing' for name in ['random_forest', 'logistic_regression', 'naive_bayes', 'svm']}}
+            else:
+                # Fallback if somehow not initialized (shouldn't happen)
+                from src.core.fraud_pipeline import FraudDetectionPipeline
+                pipeline = FraudDetectionPipeline()
+                status = {'models_loaded': len(pipeline.models), 'model_status': {name: 'loaded' if name in pipeline.models else 'missing' for name in ['random_forest', 'logistic_regression', 'naive_bayes', 'svm']}}
             
             # Always use ensemble - no selection dropdown
             st.success("🎯 **Active System: Ensemble Voting**")

@@ -83,17 +83,49 @@ def generate_training_report(metrics: Dict[str, Any], model_type: str) -> str:
 
 
 def generate_model_comparison_report(model_results: Dict[str, Dict[str, Any]]) -> str:
-    """Generate a model comparison report."""
-    report = "# Model Comparison Report\n\n"
-    report += "| Model | Accuracy | F1 Score | Precision | Recall |\n"
-    report += "|-------|----------|----------|-----------|--------|\n"
+    """Generate a realistic model comparison report for imbalanced data."""
+    from datetime import datetime
+    
+    report = "# Model Comparison Report (Realistic Metrics)\n\n"
+    report += f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    
+    # Get fraud rate from first model (should be same for all)
+    first_result = next(iter(model_results.values()))
+    first_metrics = first_result.get('metrics', {})
+    fraud_rate = first_metrics.get('fraud_rate', 0)
+    
+    report += f"**Dataset Context**: {fraud_rate:.1%} fraud rate (severely imbalanced)\n"
+    report += f"**Baseline**: Random classifier would achieve {(1-fraud_rate):.1%} accuracy\n\n"
+    
+    # Create comprehensive table
+    report += "| Model | F1 | Balanced Acc | PR-AUC | MCC | Precision | Recall | Accuracy* |\n"
+    report += "|-------|----|--------------|---------|----|-----------|--------|----------|\n"
     
     for model_name, results in model_results.items():
         metrics = results.get('metrics', {})
-        report += f"| {model_name} | {metrics.get('accuracy', 0):.4f} | "
-        report += f"{metrics.get('f1_score', 0):.4f} | "
-        report += f"{metrics.get('precision', 0):.4f} | "
-        report += f"{metrics.get('recall', 0):.4f} |\n"
+        report += f"| {model_name} | "
+        report += f"{metrics.get('f1_score', 0):.3f} | "
+        report += f"{metrics.get('balanced_accuracy', 0):.3f} | "
+        report += f"{metrics.get('pr_auc', 0):.3f} | "
+        report += f"{metrics.get('matthews_corrcoef', 0):.3f} | "
+        report += f"{metrics.get('precision', 0):.3f} | "
+        report += f"{metrics.get('recall', 0):.3f} | "
+        report += f"{metrics.get('accuracy', 0):.3f} |\n"
+    
+    report += "\n*Accuracy is misleading with imbalanced data - focus on F1, Balanced Accuracy, and PR-AUC\n"
+    
+    # Add warnings section
+    warnings = []
+    for model_name, results in model_results.items():
+        metrics = results.get('metrics', {})
+        if 'warning' in metrics:
+            warnings.append(f"- **{model_name}**: {metrics['warning']}")
+        if 'pr_warning' in metrics:
+            warnings.append(f"- **{model_name}**: {metrics['pr_warning']}")
+    
+    if warnings:
+        report += "\n## ⚠️ Warnings\n\n"
+        report += "\n".join(warnings) + "\n"
     
     return report
 
@@ -150,13 +182,131 @@ class JobFraudTrainingCLI:
             'none': 'No Balancing'
         }
         
-        self.dataset_options = {
-            'english': '🇺🇸 English Dataset (17K samples)',
-            'arabic': '🇸🇦 Arabic Dataset (2K samples)',
-            'combined': '🌍 Combined Multilingual Dataset (19K+ samples)',
-            'auto': '🤖 Auto-detect and Combine Available Datasets'
-        }
+        # Initialize with dynamic dataset discovery
+        self.dataset_options = self._discover_datasets()
         
+    def _discover_datasets(self):
+        """Dynamically discover all available CSV datasets."""
+        import glob
+        
+        datasets = {}
+        
+        # Predefined special options first
+        datasets['auto'] = '🤖 Auto-detect best available dataset'
+        
+        # Scan for CSV files in data directories
+        data_dirs = ['data/raw', 'data/processed']
+        
+        for data_dir in data_dirs:
+            if os.path.exists(data_dir):
+                csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+                
+                for csv_file in sorted(csv_files):
+                    # Get relative path and create key
+                    rel_path = os.path.relpath(csv_file)
+                    file_name = os.path.basename(csv_file).replace('.csv', '')
+                    
+                    # Get file size
+                    try:
+                        size_mb = os.path.getsize(csv_file) / (1024 * 1024)
+                        
+                        # Try to get row count quickly
+                        try:
+                            with open(csv_file, 'r', encoding='utf-8') as f:
+                                row_count = sum(1 for line in f) - 1  # Subtract header
+                            rows_info = f"{row_count:,} rows"
+                        except:
+                            rows_info = f"{size_mb:.1f}MB"
+                        
+                        # Create descriptive labels based on filename
+                        if 'network' in file_name:
+                            emoji = '📊'
+                            desc = 'Network Features Dataset'
+                        elif 'merged_raw_data.csv' in csv_file:
+                            emoji = '🔥'
+                            desc = 'Merged Raw Dataset'
+                        elif 'fake_job_postings' in file_name:
+                            emoji = '🇺🇸'
+                            desc = 'English Dataset'
+                        elif 'mergedFakeWithRealData' in file_name:
+                            emoji = '🇸🇦'
+                            desc = 'Arabic Dataset'
+                        elif 'multilingual' in file_name:
+                            emoji = '🌍'
+                            desc = 'Multilingual Dataset'
+                        elif 'cleaned' in file_name:
+                            emoji = '🧹'
+                            desc = 'Cleaned Dataset'
+                        elif 'jadarat' in file_name.lower():
+                            emoji = '📚'
+                            desc = 'Jadarat Dataset'
+                        else:
+                            emoji = '📄'
+                            desc = file_name.replace('_', ' ').title()
+                        
+                        # Use filename as key for easy selection
+                        key = file_name
+                        datasets[key] = f'{emoji} {desc} ({rel_path} - {rows_info})'
+                        
+                    except Exception as e:
+                        # Fallback if we can't read file info
+                        datasets[file_name] = f'📄 {file_name} ({rel_path})'
+        
+        return datasets
+    
+    def _get_dataset_path(self, dataset_choice):
+        """Get the file path for a selected dataset."""
+        import glob
+        
+        if dataset_choice == 'auto':
+            # Auto-detect best available dataset - prefer network version if available
+            candidates = [
+                "data/processed/merged_raw_data_with_network.csv",  # Prefer network features
+                "data/processed/merged_raw_data.csv",
+                "data/processed/multilingual_job_fraud_data.csv", 
+                "data/raw/fake_job_postings.csv",
+                "data/raw/mergedFakeWithRealData.csv"
+            ]
+            
+            for candidate in candidates:
+                if os.path.exists(candidate):
+                    if self.console:
+                        self.console.print(f"🤖 Auto-selected: {candidate}", style="green")
+                    else:
+                        print(f"🤖 Auto-selected: {candidate}")
+                    return candidate
+            
+            # Fallback - find any CSV file
+            for data_dir in ['data/processed', 'data/raw']:
+                if os.path.exists(data_dir):
+                    csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+                    if csv_files:
+                        return csv_files[0]
+            
+            raise FileNotFoundError("No CSV datasets found in data/raw or data/processed")
+        
+        # For specific dataset choices, find the matching file
+        for data_dir in ['data/processed', 'data/raw']:
+            if os.path.exists(data_dir):
+                csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+                for csv_file in csv_files:
+                    file_name = os.path.basename(csv_file).replace('.csv', '')
+                    if file_name == dataset_choice:
+                        if self.console:
+                            self.console.print(f"✅ Using dataset: {csv_file}", style="green")
+                        else:
+                            print(f"✅ Using dataset: {csv_file}")
+                        return csv_file
+        
+        # If not found, raise error with helpful message
+        available_files = []
+        for data_dir in ['data/processed', 'data/raw']:
+            if os.path.exists(data_dir):
+                csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+                available_files.extend([os.path.basename(f).replace('.csv', '') for f in csv_files])
+        
+        raise FileNotFoundError(f"Dataset '{dataset_choice}' not found. Available datasets: {', '.join(available_files)}")
+    
     def print_header(self):
         """Print CLI header."""
         if self.console:
@@ -189,71 +339,12 @@ class JobFraudTrainingCLI:
             print("\nAvailable datasets:")
             for i, (key, desc) in enumerate(self.dataset_options.items(), 1):
                 print(f"  {i}. {key}: {desc}")
-            choice = input(f"Select dataset (1-{len(self.dataset_options)}) [4]: ").strip() or "4"
+            choice = input(f"Select dataset (1-{len(self.dataset_options)}) [5]: ").strip() or "5"
             dataset_keys = list(self.dataset_options.keys())
             dataset_choice = dataset_keys[int(choice) - 1]
         
         # Set data path based on choice
-        if dataset_choice == 'english':
-            config['data_path'] = "data/raw/fake_job_postings.csv"
-        elif dataset_choice == 'arabic':
-            config['data_path'] = "data/raw/mergedFakeWithRealData.csv"
-        elif dataset_choice == 'combined':
-            # Create combined dataset
-            combined_path = "data/processed/multilingual_job_fraud_data.csv"
-            if not os.path.exists(combined_path):
-                try:
-                    if self.console:
-                        self.console.print("🔄 Creating combined multilingual dataset...", style="blue")
-                    else:
-                        print("🔍 Using existing multilingual dataset...")
-                        # Use existing multilingual dataset
-                        multilingual_path = "data/processed/multilingual_job_fraud_data.csv"
-                        if os.path.exists(multilingual_path):
-                            combined_path = multilingual_path
-                            if self.console:
-                                self.console.print("✅ Using existing multilingual dataset", style="green")
-                            else:
-                                print("✅ Using existing multilingual dataset")
-                except Exception as e:
-                    if self.console:
-                        self.console.print(f"❌ Error creating combined dataset: {e}", style="red")
-                    else:
-                        print(f"❌ Error creating combined dataset: {e}")
-                    # Fallback to Arabic dataset
-                    combined_path = "data/raw/mergedFakeWithRealData.csv"
-            config['data_path'] = combined_path
-        else:  # auto
-            # Auto-detect available datasets and combine
-            english_path = "data/raw/fake_job_postings.csv"
-            arabic_path = "data/raw/mergedFakeWithRealData.csv"
-            combined_path = "data/processed/multilingual_job_fraud_data.csv"
-
-            # Check which datasets are available
-            available_datasets = []
-            if os.path.exists(english_path):
-                available_datasets.append("English")
-            if os.path.exists(arabic_path):
-                available_datasets.append("Arabic")
-            
-            if len(available_datasets) > 1:
-                # Combine datasets
-                if self.console:
-                    self.console.print(f"🔍 Found {', '.join(available_datasets)} datasets. Creating combined dataset...", style="blue")
-                else:
-                    print(f"🔍 Found {', '.join(available_datasets)} datasets. Creating combined dataset...")
-                
-                try:
-                    # Use existing multilingual dataset
-                    multilingual_path = "data/processed/multilingual_job_fraud_data.csv"
-                    if os.path.exists(multilingual_path):
-                        config['data_path'] = multilingual_path
-                except Exception as e:
-                    # Fallback to largest available dataset
-                    config['data_path'] = english_path if os.path.exists(english_path) else arabic_path
-            else:
-                # Use single available dataset
-                config['data_path'] = english_path if os.path.exists(english_path) else arabic_path
+        config['data_path'] = self._get_dataset_path(dataset_choice)
         
         config['dataset_type'] = dataset_choice
         
@@ -415,8 +506,12 @@ class JobFraudTrainingCLI:
                 print("💾 Saving model...")
                 pipeline_manager.save_pipeline(config['model_type'])
             
-            # Calculate training time
+            # Calculate training time BEFORE using it
             training_time = time.time() - start_time
+            
+            # Save metrics to JSON file for dynamic weight calculation
+            print("📊 Saving metrics for dynamic weight calculation...")
+            self.save_metrics_to_json(config['model_type'], metrics, training_time)
             
             # Prepare results in expected format
             results = {
@@ -429,15 +524,36 @@ class JobFraudTrainingCLI:
             # Success message
             if self.console:
                 self.console.print(f"✅ {config['model_type']} pipeline trained and saved successfully!", style="green")
-                # Show key metrics
+                # Show realistic metrics with context
                 test_f1 = metrics.get('f1_score', 0)
                 test_acc = metrics.get('accuracy', 0) 
-                self.console.print(f"📊 F1-Score: {test_f1:.3f}, Accuracy: {test_acc:.3f}", style="cyan")
+                balanced_acc = metrics.get('balanced_accuracy', 0)
+                pr_auc = metrics.get('pr_auc', 0)
+                fraud_rate = metrics.get('fraud_rate', 0)
+                
+                # Show key metrics with fraud context
+                self.console.print(f"📊 Fraud Rate: {fraud_rate:.1%} | F1: {test_f1:.3f} | Balanced Acc: {balanced_acc:.3f} | PR-AUC: {pr_auc:.3f}", style="cyan")
+                
+                # Show warnings if present
+                if 'warning' in metrics:
+                    self.console.print(f"{metrics['warning']}", style="yellow")
+                if 'pr_warning' in metrics:
+                    self.console.print(f"{metrics['pr_warning']}", style="yellow")
             else:
                 print(f"✅ {config['model_type']} pipeline trained and saved successfully!")
                 test_f1 = metrics.get('f1_score', 0)
                 test_acc = metrics.get('accuracy', 0)
-                print(f"📊 F1-Score: {test_f1:.3f}, Accuracy: {test_acc:.3f}")
+                balanced_acc = metrics.get('balanced_accuracy', 0)
+                pr_auc = metrics.get('pr_auc', 0)
+                fraud_rate = metrics.get('fraud_rate', 0)
+                
+                print(f"📊 Fraud Rate: {fraud_rate:.1%} | F1: {test_f1:.3f} | Balanced Acc: {balanced_acc:.3f} | PR-AUC: {pr_auc:.3f}")
+                
+                # Show warnings if present
+                if 'warning' in metrics:
+                    print(f"{metrics['warning']}")
+                if 'pr_warning' in metrics:
+                    print(f"{metrics['pr_warning']}")
             
             return results
             
@@ -477,7 +593,12 @@ class JobFraudTrainingCLI:
             
             if result['success']:
                 metrics = result.get('metrics', {})
+                training_time = result.get('training_time', 0)
                 f1_score = metrics.get('f1_score', 0)
+                
+                # Save metrics for each model in comparison mode
+                self.save_metrics_to_json(model_type, metrics, training_time)
+                
                 if self.console:
                     self.console.print(f"✅ {model_type}: F1-Score = {f1_score:.3f}", style="green")
                 else:
@@ -507,6 +628,92 @@ class JobFraudTrainingCLI:
             print(comparison_df.to_string(index=False))
         
         return results
+    
+    def save_metrics_to_json(self, model_type: str, metrics: Dict[str, Any], training_time: float = 0):
+        """Save model metrics to JSON file for dynamic weight calculation."""
+        import json
+        from datetime import datetime
+        
+        metrics_file = "models/model_metrics.json"
+        
+        try:
+            # Auto-create directory if needed
+            os.makedirs(os.path.dirname(metrics_file), exist_ok=True)
+            
+            # Load existing metrics or create new structure
+            if os.path.exists(metrics_file):
+                try:
+                    with open(metrics_file, 'r') as f:
+                        data = json.load(f)
+                    print(f"📊 Loaded existing metrics from {metrics_file}")
+                except (json.JSONDecodeError, IOError) as e:
+                    print(f"⚠️ Corrupted metrics file, recreating: {e}")
+                    data = self._create_default_metrics_structure()
+            else:
+                print(f"📊 Creating new metrics file: {metrics_file}")
+                data = self._create_default_metrics_structure()
+            
+            # Update model metrics
+            data["models"][model_type] = {
+                "f1_score": metrics.get("f1_score", 0.0),
+                "precision": metrics.get("precision", 0.0),
+                "recall": metrics.get("recall", 0.0),
+                "accuracy": metrics.get("accuracy", 0.0),
+                "balanced_accuracy": metrics.get("balanced_accuracy", 0.0),
+                "pr_auc": metrics.get("pr_auc", 0.0),
+                "training_time": training_time,
+                "training_date": datetime.now().isoformat(),
+                "model_path": f"models/{model_type}_pipeline.joblib",
+                "status": "active"
+            }
+            
+            # Recalculate weights based on F1 scores
+            model_f1_scores = {name: model["f1_score"] for name, model in data["models"].items()}
+            total_f1 = sum(model_f1_scores.values())
+            
+            if total_f1 > 0:
+                for name, model in data["models"].items():
+                    model["weight"] = model["f1_score"] / total_f1
+            
+            # Update timestamp
+            data["last_updated"] = datetime.now().isoformat()
+            
+            # Save updated metrics
+            os.makedirs(os.path.dirname(metrics_file), exist_ok=True)
+            with open(metrics_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            # Log the update
+            f1_score = metrics.get("f1_score", 0.0)
+            weight = data["models"][model_type]["weight"]
+            print(f"✅ Metrics saved: {model_type} F1={f1_score:.3f} Weight={weight:.3f}")
+            
+        except Exception as e:
+            print(f"⚠️ Warning: Could not save metrics to JSON: {str(e)}")
+    
+    def _create_default_metrics_structure(self):
+        """Create default metrics structure with precision-focused settings."""
+        from datetime import datetime
+        return {
+            "last_updated": datetime.now().isoformat(),
+            "data_source": "merged_raw_data.csv",
+            "models": {},
+            "ensemble_config": {
+                "weight_calculation_method": "f1_based",
+                "total_weight_sum": 1.0,
+                "minimum_f1_threshold": 0.05,
+                "fraud_threshold": 0.65,  # INCREASED from 0.5 to reduce false positives
+                "confidence_threshold": 0.75,
+                "precision_focused": True,
+                "false_positive_penalty": 0.1
+            },
+            "dataset_info": {
+                "total_samples": 19350,
+                "fraud_rate": 0.0448,
+                "class_balance": "imbalanced"
+            },
+            "version": "3.0.0"
+        }
     
     def generate_training_report(self, results: Dict[str, Any], config: Dict[str, Any]):
         """Generate comprehensive training report."""
@@ -647,9 +854,8 @@ def main():
     parser.add_argument(
         '--dataset',
         type=str,
-        choices=['english', 'arabic', 'combined', 'auto'],
         default='auto',
-        help='Predefined dataset option: english (17K), arabic (2K), combined (19K+), or auto-detect'
+        help='Dataset name (filename without .csv) or "auto" to auto-detect best dataset. Available datasets will be discovered automatically from data/raw and data/processed directories.'
     )
     
     parser.add_argument(
@@ -694,42 +900,13 @@ def main():
         if args.data:
             data_path = args.data
         else:
-            # Use dataset option to determine path
-            dataset_choice = args.dataset
-            if dataset_choice == 'english':
-                data_path = "data/raw/fake_job_postings.csv"
-            elif dataset_choice == 'arabic':
-                data_path = "data/raw/mergedFakeWithRealData.csv"
-            elif dataset_choice == 'combined':
-                data_path = "data/processed/multilingual_job_fraud_data.csv"
-                # Create combined dataset if it doesn't exist
-                if not os.path.exists(data_path):
-                    try:
-                        print("🔍 Using existing multilingual dataset...")
-                        multilingual_path = "data/processed/multilingual_job_fraud_data.csv"
-                        if os.path.exists(multilingual_path):
-                            data_path = multilingual_path
-                            print("✅ Using existing multilingual dataset")
-                    except Exception as e:
-                        print(f"❌ Error creating combined dataset: {e}")
-                        data_path = "data/raw/mergedFakeWithRealData.csv"
-            else:  # auto
-                # Auto-detect and combine if possible
-                english_path = "data/raw/fake_job_postings.csv"
-                arabic_path = "data/raw/mergedFakeWithRealData.csv"
-                combined_path = "data/processed/multilingual_job_fraud_data.csv"
-
-                if os.path.exists(english_path) and os.path.exists(arabic_path):
-                    try:
-                        print("🔍 Found both datasets. Using existing multilingual dataset...")
-                        multilingual_path = "data/processed/multilingual_job_fraud_data.csv"
-                        if os.path.exists(multilingual_path):
-                            data_path = multilingual_path
-                    except Exception as e:
-                        print(f"❌ Error creating combined dataset: {e}")
-                        data_path = english_path  # Fallback to larger dataset
-                else:
-                    data_path = english_path if os.path.exists(english_path) else arabic_path
+            # Use dynamic dataset discovery
+            cli = JobFraudTrainingCLI()
+            try:
+                data_path = cli._get_dataset_path(args.dataset)
+            except FileNotFoundError as e:
+                print(f"❌ {e}")
+                sys.exit(1)
         
         if not os.path.exists(data_path):
             print(f"❌ Data file not found: {data_path}")

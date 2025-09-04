@@ -8,7 +8,7 @@ Consolidated from:
 - config.py (merged and deleted)
 - All scattered constants throughout codebase
 
-Version: 3.0.0 - Complete DRY Consolidation
+Version: 4.0.0 - Content-Focused (Profile fields removed)
 """
 
 import os
@@ -52,12 +52,10 @@ class BrightDataConstants:
         # Correct endpoint for data scraping
         'trigger_endpoint': 'https://api.brightdata.com/datasets/v3/scrape',
         
-        # Correct dataset IDs from official Bright Data GitHub examples
+        # Dataset IDs for content-focused scraping (profile dataset removed)
         'dataset_ids': {
-            'profiles': 'gd_l1viktl72bvl7bjuj0',    # LinkedIn Profiles
             'companies': 'gd_l1vikfnt1wgvvqz95w',   # LinkedIn Companies  
             'jobs': 'gd_lpfll7v5hcqtkxl6l',         # LinkedIn Jobs
-            'posts': 'gd_lyy3tktm25m4avu764'       # LinkedIn Posts
         },
         
         # API parameter keys
@@ -76,7 +74,7 @@ class BrightDataConstants:
             'language': 'en'
         },
         
-        # Comprehensive field extraction for fraud detection
+        # Content-focused field extraction (profile fields removed)
         'extraction_fields': {
             'job_fields': [
                 'job_title', 'job_description', 'job_functions', 'job_industries',
@@ -90,17 +88,8 @@ class BrightDataConstants:
                 'company_founded', 'company_employees', 'company_followers', 'company_funding',
                 'company_website', 'company_description', 'company_specialties'
             ],
-            'poster_fields': [
-                'poster_name', 'poster_title', 'poster_company', 'poster_location',
-                'poster_profile_url', 'poster_connections', 'poster_followers',
-                'poster_experience', 'poster_education', 'poster_skills',
-                'poster_certifications', 'poster_languages', 'poster_recommendations',
-                'poster_endorsements', 'poster_activity', 'poster_verified',
-                'poster_premium', 'poster_profile_photo'
-            ],
             'verification_fields': [
-                'hiring_team', 'company_employees_on_linkedin', 'similar_companies',
-                'job_posting_company_match', 'poster_company_relationship',
+                'company_employees_on_linkedin', 'similar_companies',
                 'company_recent_hires', 'company_growth_rate', 'job_repost_count'
             ]
         }
@@ -237,11 +226,23 @@ class DataConstants:
         'employment_type_encoded'
     ]
     
+    # Integer count columns (fraud indicators, etc.)
+    INTEGER_COLUMNS = [
+        'fraud_indicators_count', 'title_word_count'
+    ]
+    
     # Score/computed columns (0.0 to 1.0 range)
     SCORE_COLUMNS = [
         'description_length_score', 'professional_language_score',
         'urgency_language_score', 'contact_professionalism_score',
-        'verification_score', 'content_quality_score', 'legitimacy_score'
+        'verification_score', 'content_quality_score', 'legitimacy_score',
+        # Company verification scores
+        'company_followers_score', 'company_employees_score', 'company_founded_score',
+        'network_quality_score', 'company_legitimacy_score', 'company_trust_score',
+        # Enhanced features (MODEL_ENHANCEMENT_PLAN Phase 1)
+        'enhanced_company_legitimacy_score', 'info_completeness_score', 
+        'suspicious_keywords_score', 'description_length_quality',
+        'exclamation_ratio', 'question_ratio', 'caps_ratio'
     ]
     
     # Required job posting sections
@@ -273,13 +274,13 @@ class DataConstants:
 class ModelConstants:
     """Single source for all ML model constants"""
     
-    # ML features only (numerical columns for training - 27 total, NO job_id)
+    # ML features only (numerical columns for training - enhanced with Phase 1 features)
     ML_FEATURE_COLUMNS = [
         # Binary indicators
         'has_company_logo', 'has_questions',
-        # Poster verification columns (CRITICAL PREDICTORS)
-        'poster_verified', 'poster_experience', 'poster_photo', 'poster_active', 'poster_score',
-        'is_highly_verified', 'is_unverified', 'verification_ratio',
+        # Content-focused features (CRITICAL PREDICTORS)
+        'content_quality_score', 'company_legitimacy_score', 'contact_risk_score',
+        'suspicious_keywords_count', 'arabic_suspicious_score', 'english_suspicious_score',
         # Language and encoding
         'language', 'experience_level_encoded', 'education_level_encoded', 
         'employment_type_encoded',
@@ -287,9 +288,13 @@ class ModelConstants:
         'description_length_score', 'title_word_count', 'professional_language_score',
         'urgency_language_score', 'contact_professionalism_score',
         'verification_score', 'content_quality_score', 'legitimacy_score',
-        # Company verification features (NEW - 5 additional features)
+        # Company verification features
         'company_followers_score', 'company_employees_score', 'company_founded_score', 
-        'network_quality_score', 'company_legitimacy_score'
+        'network_quality_score', 'company_legitimacy_score',
+        # Enhanced features
+        'enhanced_company_legitimacy_score', 'fraud_indicators_count', 'info_completeness_score',
+        'suspicious_keywords_score', 'description_length_quality', 
+        'exclamation_ratio', 'question_ratio', 'caps_ratio'
     ]
     
     # Required feature columns (33 total - includes ML features + text for processing + target)
@@ -307,12 +312,12 @@ class ModelConstants:
         'poster_active': 0.1         # Recent activity indicators
     }
     
-    # Risk level thresholds (based on verification analysis)
+    # Risk level thresholds (based on content quality analysis)
     RISK_THRESHOLDS = {
-        'very_low': 0.15,    # poster_score >= 3 (highly verified)
-        'low': 0.30,         # poster_score == 2 (moderately verified) 
-        'high': 0.75,        # poster_score == 1 (low verification)
-        'very_high': 0.95    # poster_score == 0 (no verification)
+        'very_low': 0.15,    # High content quality and company legitimacy
+        'low': 0.30,         # Good content quality 
+        'high': 0.75,        # Poor content quality
+        'very_high': 0.95    # Very poor content quality and high risk indicators
     }
     
     # Model parameters (consolidated from config.py)
@@ -348,11 +353,11 @@ class ModelConstants:
     
     # Default model configuration
     DEFAULT_MODEL_CONFIG = {
-        'model_type': 'random_forest',
+        'model_type': 'ensemble',  # Enhanced for Phase 2
         'test_size': 0.2,
         'validation_size': 0.2,
         'random_state': 42,
-        'balance_method': 'smote',
+        'balance_method': 'borderline_smote',  # Enhanced SMOTE
         'scaling_method': 'standard'
     }
     

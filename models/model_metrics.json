@@ -1,0 +1,73 @@
+{
+  "last_updated": "2025-09-04T14:37:39.617935",
+  "data_source": "merged_raw_data.csv",
+  "models": {
+    "random_forest": {
+      "f1_score": 0.7363636363636363,
+      "precision": 0.6067415730337079,
+      "recall": 0.9364161849710982,
+      "accuracy": 0.9700258397932816,
+      "balanced_accuracy": 0.9540073892126251,
+      "pr_auc": 0.9205468788959003,
+      "training_time": 28.022096157073975,
+      "training_date": "2025-09-04T14:36:12.682488",
+      "model_path": "models/random_forest_pipeline.joblib",
+      "status": "active",
+      "weight": 0.44869820357792917
+    },
+    "logistic_regression": {
+      "f1_score": 0.346723044397463,
+      "precision": 0.21216041397153945,
+      "recall": 0.9479768786127167,
+      "accuracy": 0.8403100775193798,
+      "balanced_accuracy": 0.8916243603233992,
+      "pr_auc": 0.7067419899159395,
+      "training_time": 29.441827058792114,
+      "training_date": "2025-09-04T14:36:42.136960",
+      "model_path": "models/logistic_regression_pipeline.joblib",
+      "status": "active",
+      "weight": 0.21127334305707832
+    },
+    "svm": {
+      "f1_score": 0.34966592427616927,
+      "precision": 0.21655172413793103,
+      "recall": 0.9075144508670521,
+      "accuracy": 0.8490956072351421,
+      "balanced_accuracy": 0.8769381829666609,
+      "pr_auc": 0.0,
+      "training_time": 28.74668312072754,
+      "training_date": "2025-09-04T14:37:10.892210",
+      "model_path": "models/svm_pipeline.joblib",
+      "status": "active",
+      "weight": 0.21306656701561322
+    },
+    "naive_bayes": {
+      "f1_score": 0.20835857056329496,
+      "precision": 0.11637347767253045,
+      "recall": 0.9942196531791907,
+      "accuracy": 0.6622739018087855,
+      "balanced_accuracy": 0.820480126833036,
+      "pr_auc": 0.5611331649634912,
+      "training_time": 28.717670917510986,
+      "training_date": "2025-09-04T14:37:39.617923",
+      "model_path": "models/naive_bayes_pipeline.joblib",
+      "status": "active",
+      "weight": 0.12696188634937927
+    }
+  },
+  "ensemble_config": {
+    "weight_calculation_method": "f1_based",
+    "total_weight_sum": 1.0,
+    "minimum_f1_threshold": 0.05,
+    "fraud_threshold": 0.65,
+    "confidence_threshold": 0.75,
+    "precision_focused": true,
+    "false_positive_penalty": 0.1
+  },
+  "dataset_info": {
+    "total_samples": 19350,
+    "fraud_rate": 0.0448,
+    "class_balance": "imbalanced"
+  },
+  "version": "3.0.0"
+}

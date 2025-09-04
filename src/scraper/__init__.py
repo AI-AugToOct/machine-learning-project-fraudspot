@@ -15,13 +15,11 @@ from .linkedin_scraper import (
     get_job_id_from_url,
     scrape_from_html,
     scrape_job,
-    scrape_profile,
     validate_linkedin_url,
 )
 
 __all__ = [
     'scrape_job',
-    'scrape_profile',
     'scrape_from_html',
     'validate_linkedin_url',
     'get_job_id_from_url',

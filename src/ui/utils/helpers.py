@@ -22,10 +22,6 @@ def calculate_company_trust_score(company_name: str) -> int:
     
     score = 50  # Base score
     
-    # Well-known companies get higher trust
-    trusted_companies = ['hungerstation', 'careem', 'uber', 'amazon', 'microsoft', 'google', 'apple']
-    if any(trusted.lower() in company_name.lower() for trusted in trusted_companies):
-        score += 40
     
     # Suspicious company indicators
     suspicious_names = ['جهة حكومية سرية', 'شركة المستقبل', 'شركة الثروة السريعة', 'مؤسسة النجاح الفوري']

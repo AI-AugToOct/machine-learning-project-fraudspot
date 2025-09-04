@@ -43,6 +43,10 @@ def inject_global_css():
                 padding: 1.5rem;
                 margin-bottom: 1.5rem;
                 box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+                min-height: 120px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
             }
             .app-header {
                 background: var(--white);
@@ -83,7 +87,7 @@ def render_html_card(html_content: str, height: Optional[int] = None) -> None:
 
 def render_metric_card(title: str, value: str, color: str = "#2563eb") -> None:
     """
-    Create a clean metric card.
+    Create a clean metric card with consistent height.
     
     Args:
         title: Card title
@@ -91,7 +95,7 @@ def render_metric_card(title: str, value: str, color: str = "#2563eb") -> None:
         color: Border color (default blue)
     """
     html = f'''
-    <div class="card" style="border-left: 4px solid {color};">
+    <div class="card" style="border-left: 4px solid {color}; min-height: 100px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
         <h4 style="color: #64748b; font-size: 0.875rem; margin: 0 0 0.5rem 0;">{title}</h4>
         <p style="color: #1e293b; font-size: 1.5rem; font-weight: 700; margin: 0;">{value}</p>
     </div>

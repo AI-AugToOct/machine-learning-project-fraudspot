@@ -23,6 +23,29 @@ from src.ui.utils.helpers import calculate_company_trust_score, get_trust_color
 from src.ui.utils.streamlit_html import render_html_card, render_info_card, render_metric_card
 
 
+def _format_applicant_count(count: int) -> str:
+    """
+    Format applicant count to match LinkedIn display format.
+    
+    Args:
+        count (int): Number of applicants
+        
+    Returns:
+        str: Formatted applicant count string
+    """
+    if count is None:
+        return ""
+    
+    if count >= 200:
+        return "Over 100 applicants"
+    elif count >= 100:
+        return f"Over {count//10*10} applicants"
+    elif count >= 50:
+        return f"Over {count//10*10} applicants"
+    else:
+        return f"{count} applicants"
+
+
 def display_job_info_card(job_data: Dict[str, Any]) -> None:
     """
     Display basic job information in a professional card format.
@@ -39,14 +62,13 @@ def display_job_info_card(job_data: Dict[str, Any]) -> None:
         job_data.get('title') or 
         job_data.get('job_title') or 
         job_data.get('name') or 
-        'Job Title Not Available'
+        ''
     )
     
     company = html.escape(
         job_data.get('company') or 
         job_data.get('company_name') or 
-        job_data.get('company_name') or 
-        'Company Not Available'
+        ''
     )
     
     location = html.escape(
@@ -54,7 +76,7 @@ def display_job_info_card(job_data: Dict[str, Any]) -> None:
         job_data.get('job_location') or 
         job_data.get('region') or 
         job_data.get('city') or 
-        'Location Not Available'
+        ''
     )
     
     salary = html.escape(
@@ -207,46 +229,41 @@ def display_job_metrics(job_data: Dict[str, Any]) -> None:
     
     with col1:
         trust_score = calculate_company_trust_score(
-            job_data.get('company_name', job_data.get('company', 'N/A'))
+            job_data.get('company_name', job_data.get('company'))
         )
         color = get_trust_color(trust_score)
         render_metric_card("Company Trust", f"{trust_score}%", color)
     
     with col2:
-        # Job posting time from Bright Data
-        posting_time = job_data.get('job_posted_time', job_data.get('job_posted_date', 'N/A'))
-        if posting_time and posting_time != 'N/A':
-            # If we have actual date/time data, display it
+        # Job posting time from Bright Data - NO FALLBACKS
+        posting_time = job_data.get('job_posted_time')
+        if posting_time:
             display_text = str(posting_time)
             # Calculate freshness for color
-            from datetime import datetime, timedelta
             try:
-                # Try to parse if it's a recognizable date format
                 if 'ago' in str(posting_time).lower() or 'day' in str(posting_time).lower():
                     color = "#4CAF50"  # Recent
                 else:
                     color = "#FF9800"  # Unknown age
             except:
                 color = "#FF9800"
-        else:
-            display_text = "N/A"
-            color = "#FF9800"
-        render_metric_card("Posted", display_text, color)
+            render_metric_card("Posted", display_text, color)
     
     with col3:
-        # Application count from Bright Data
-        applications = job_data.get('application_count', 
-                                   job_data.get('job_num_applicants', 'N/A'))
-        color = "#007bff"
-        render_metric_card("Applications", str(applications), color)
+        # Application count from Bright Data - NO FALLBACKS
+        applications = job_data.get('job_num_applicants')
+        if applications is not None:
+            color = "#007bff"
+            # Use helper function for consistent formatting
+            display_text = _format_applicant_count(applications).replace(' applicants', '')
+            render_metric_card("Applications", display_text, color)
     
     with col4:
-        # Job type from Bright Data
-        job_type = job_data.get('job_type', 
-                               job_data.get('job_employment_type',
-                                          job_data.get('contract_type', 'N/A')))
-        color = "#28a745" if job_type == 'Full-time' else "#ffc107"
-        render_metric_card("Type", str(job_type), color)
+        # Job type from Bright Data - NO FALLBACKS  
+        job_type = job_data.get('job_employment_type')
+        if job_type:
+            color = "#28a745" if job_type == 'Full-time' else "#ffc107"
+            render_metric_card("Type", str(job_type), color)
 
 
 def display_job_description(job_data: Dict[str, Any]) -> None:
@@ -419,25 +436,23 @@ def display_modern_job_card(job_data: Dict[str, Any]) -> None:
     """
     if not job_data:
         return
+    
+    # DEBUG: Log the actual data being passed
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"🎯 JOB DISPLAY DATA: posted_time={job_data.get('job_posted_time')}, applicants={job_data.get('job_num_applicants')}")
         
-    # Extract essential job information (remove technical clutter)
-    job_title = (job_data.get('job_title') or 
-                job_data.get('title') or 
-                'Position Title Not Available')
+    # Extract essential job information - NO FALLBACKS, only real LinkedIn data
+    job_title = job_data.get('job_title')
+    company_name = job_data.get('company_name')
+    location = job_data.get('job_location')  # Use correct API field name
+    posted_time = job_data.get('job_posted_time')
+    applicants = job_data.get('job_num_applicants')
     
-    company_name = (job_data.get('company_name') or 
-                   job_data.get('company') or 
-                   'Company Not Specified')
-    
-    location = (job_data.get('location') or 
-               job_data.get('job_location') or 
-               'Location Not Specified')
-    
-    posted_time = (job_data.get('job_posted_time') or 
-                  job_data.get('posted_date') or 
-                  'Recently')
-    
-    applicants = job_data.get('job_num_applicants', 'N/A')
+    # Early return if essential data is missing
+    if not job_title or not company_name:
+        st.error("Essential job data missing - cannot display job card")
+        return
     
     # Get company logo URL and render as image
     company_logo_url = job_data.get('company_logo', '')
@@ -480,17 +495,11 @@ def display_modern_job_card(job_data: Dict[str, Any]) -> None:
                         <span style="margin-right: 8px;">🏢</span>
                         {html.escape(company_name)}
                     </div>
-                    <div style="display: flex; align-items: center; color: #4b5563;">
-                        <span style="margin-right: 8px;">📍</span>
-                        {html.escape(location)}
-                    </div>
+                    {f'<div style="display: flex; align-items: center; color: #4b5563;"><span style="margin-right: 8px;">📍</span>{html.escape(location)}</div>' if location else ''}
                 </div>
                 <div style="display: flex; align-items: center; gap: 20px; color: #6b7280; font-size: 14px;">
-                    <div style="display: flex; align-items: center;">
-                        <span style="margin-right: 6px;">🕒</span>
-                        {html.escape(str(posted_time))}
-                    </div>
-                    {f'<div style="display: flex; align-items: center;"><span style="margin-right: 6px;">👥</span>{applicants} applicants</div>' if str(applicants) != 'N/A' else ''}
+                    {f'<div style="display: flex; align-items: center;"><span style="margin-right: 6px;">🕒</span>{html.escape(str(posted_time))}</div>' if posted_time else ''}
+                    {f'<div style="display: flex; align-items: center;"><span style="margin-right: 6px;">👥</span>{_format_applicant_count(applicants)}</div>' if applicants is not None else ''}
                 </div>
             </div>
         </div>

@@ -261,13 +261,13 @@ class EvaluationUtils:
             # Feature importance recommendations
             feature_importance = training_results.get('feature_importance', [])
             if feature_importance:
-                # Check if verification features are top contributors
+                # Check if content features are top contributors
                 top_features = [feat[0] for feat in feature_importance[:5]]
-                verification_features = ['poster_verified', 'poster_experience', 'poster_photo', 'poster_active']
+                content_features = ['content_quality_score', 'company_legitimacy_score', 'contact_risk_score', 'suspicious_keywords_count']
                 
-                verification_in_top = any(vf in top_features for vf in verification_features)
-                if not verification_in_top:
-                    recommendations.append("Verification features not in top 5: Check feature engineering and weights")
+                content_in_top = any(cf in top_features for cf in content_features)
+                if not content_in_top:
+                    recommendations.append("Content quality features not in top 5: Check feature engineering and weights")
             
             # Model-specific recommendations
             config = training_results.get('config', {})

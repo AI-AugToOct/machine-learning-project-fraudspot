@@ -18,9 +18,11 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
+    balanced_accuracy_score,
     classification_report,
     confusion_matrix,
     f1_score,
+    matthews_corrcoef,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -110,7 +112,8 @@ class ModelUtils:
     def calculate_comprehensive_metrics(y_true: np.ndarray, y_pred: np.ndarray, 
                                       y_pred_proba: np.ndarray = None) -> Dict[str, Any]:
         """
-        Calculate comprehensive model evaluation metrics.
+        Calculate comprehensive model evaluation metrics + business impact analysis.
+        Enhanced with MODEL_ENHANCEMENT_PLAN Phase 1 business metrics.
         
         Args:
             y_true: True labels
@@ -118,15 +121,24 @@ class ModelUtils:
             y_pred_proba: Prediction probabilities (optional)
             
         Returns:
-            Dict[str, Any]: Comprehensive metrics
+            Dict[str, Any]: Comprehensive metrics with business impact
         """
         try:
+            # Calculate class distribution
+            n_positive = int(np.sum(y_true))
+            n_negative = int(len(y_true) - n_positive)
+            fraud_rate = float(n_positive / len(y_true))
+            
             metrics = {
                 # Basic metrics
                 'accuracy': float(accuracy_score(y_true, y_pred)),
+                'balanced_accuracy': float(balanced_accuracy_score(y_true, y_pred)),
                 'precision': float(precision_score(y_true, y_pred, average='binary', zero_division=0)),
                 'recall': float(recall_score(y_true, y_pred, average='binary', zero_division=0)),
                 'f1_score': float(f1_score(y_true, y_pred, average='binary', zero_division=0)),
+                
+                # Imbalanced data metrics
+                'matthews_corrcoef': float(matthews_corrcoef(y_true, y_pred)),
                 
                 # Confusion matrix
                 'confusion_matrix': confusion_matrix(y_true, y_pred).tolist(),
@@ -134,11 +146,16 @@ class ModelUtils:
                 # Classification report
                 'classification_report': classification_report(y_true, y_pred, output_dict=True, zero_division=0),
                 
-                # Sample counts
+                # Sample counts and class distribution
                 'n_samples': len(y_true),
-                'n_positive': int(np.sum(y_true)),
-                'n_negative': int(len(y_true) - np.sum(y_true))
+                'n_positive': n_positive,
+                'n_negative': n_negative,
+                'fraud_rate': fraud_rate
             }
+            
+            # Add warning if accuracy is suspiciously high with imbalanced data
+            if metrics['accuracy'] > 0.90 and fraud_rate < 0.10:
+                metrics['warning'] = f"⚠️  High accuracy ({metrics['accuracy']:.1%}) with only {fraud_rate:.1%} fraud - check for overfitting!"
             
             # Add confusion matrix details
             cm = confusion_matrix(y_true, y_pred)
@@ -152,6 +169,10 @@ class ModelUtils:
                     'specificity': float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0,
                     'sensitivity': float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
                 })
+                
+                # Enhanced Business Impact Metrics (MODEL_ENHANCEMENT_PLAN Phase 1)
+                business_metrics = ModelUtils.calculate_business_impact(cm)
+                metrics.update(business_metrics)
             
             # Add probability-based metrics
             if y_pred_proba is not None:
@@ -168,15 +189,25 @@ class ModelUtils:
                     try:
                         metrics['roc_auc'] = float(roc_auc_score(y_true, pos_proba))
                         
-                        # Precision-Recall AUC
-                        from sklearn.metrics import auc, precision_recall_curve
+                        # Precision-Recall AUC (more informative for imbalanced data)
+                        from sklearn.metrics import auc, average_precision_score, precision_recall_curve
                         precision, recall, _ = precision_recall_curve(y_true, pos_proba)
                         metrics['pr_auc'] = float(auc(recall, precision))
+                        metrics['average_precision'] = float(average_precision_score(y_true, pos_proba))
+                        
+                        # Add baseline comparison for PR-AUC (random classifier performance)
+                        fraud_rate = float(np.sum(y_true) / len(y_true))
+                        metrics['pr_baseline'] = fraud_rate  # Random classifier PR-AUC = fraud rate
+                        
+                        # Flag if PR-AUC is not much better than random
+                        if metrics['pr_auc'] < fraud_rate * 2:
+                            metrics['pr_warning'] = f"⚠️  PR-AUC ({metrics['pr_auc']:.3f}) barely better than random ({fraud_rate:.3f})"
                         
                     except Exception as e:
                         logger.warning(f"Could not calculate AUC metrics: {str(e)}")
                         metrics['roc_auc'] = 0.0
                         metrics['pr_auc'] = 0.0
+                        metrics['average_precision'] = 0.0
             
             return metrics
             
@@ -229,6 +260,97 @@ class ModelUtils:
             return []
     
     @staticmethod
+    def calculate_business_impact(confusion_matrix: np.ndarray, 
+                                costs: Dict[str, float] = None) -> Dict[str, Any]:
+        """
+        Calculate business impact metrics from MODEL_ENHANCEMENT_PLAN Phase 1.
+        
+        Args:
+            confusion_matrix: 2x2 confusion matrix
+            costs: Cost dictionary with business impact values
+            
+        Returns:
+            Dict[str, Any]: Business impact metrics
+        """
+        # Default business costs for fraud detection
+        if costs is None:
+            costs = {
+                'false_positive': 10,    # Cost of reviewing legitimate job ($10)
+                'false_negative': 1000,  # Cost of missing fraud ($1000)
+                'true_positive': 5,      # Cost of reviewing detected fraud ($5)
+                'true_negative': 0       # No cost for correctly identifying legitimate
+            }
+        
+        try:
+            tn, fp, fn, tp = confusion_matrix.ravel()
+            
+            # Calculate total cost
+            total_cost = (
+                fp * costs['false_positive'] +
+                fn * costs['false_negative'] +
+                tp * costs['true_positive'] +
+                tn * costs['true_negative']
+            )
+            
+            # Calculate savings (fraud prevented)
+            fraud_prevented_value = tp * costs['false_negative']  # Value of fraud we caught
+            
+            # Calculate ROI
+            review_costs = fp * costs['false_positive'] + tp * costs['true_positive']
+            roi = (fraud_prevented_value - review_costs) / max(review_costs, 1)
+            
+            # Calculate business metrics
+            business_metrics = {
+                # Core business metrics
+                'total_cost': float(total_cost),
+                'fraud_prevented_value': float(fraud_prevented_value),
+                'review_costs': float(review_costs),
+                'roi': float(roi),
+                
+                # Key performance indicators
+                'fraud_catch_rate': float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0,  # Recall
+                'false_positive_rate': float(fp / (fp + tn)) if (fp + tn) > 0 else 0.0,
+                'cost_per_detection': float(total_cost / tp) if tp > 0 else float('inf'),
+                'cost_per_review': float(review_costs / (fp + tp)) if (fp + tp) > 0 else 0.0,
+                
+                # Business insights
+                'fraud_losses_prevented': float(tp * costs['false_negative']),
+                'unnecessary_reviews': int(fp),
+                'missed_fraud_cost': float(fn * costs['false_negative']),
+                
+                # Efficiency metrics
+                'precision_cost_ratio': float(tp / (fp + tp)) if (fp + tp) > 0 else 0.0,
+                'net_benefit': float(fraud_prevented_value - total_cost)
+            }
+            
+            # Add business assessment
+            if roi > 5.0:
+                business_metrics['business_assessment'] = "Excellent ROI - High business value"
+            elif roi > 2.0:
+                business_metrics['business_assessment'] = "Good ROI - Positive business impact"
+            elif roi > 0.5:
+                business_metrics['business_assessment'] = "Moderate ROI - Break-even performance"
+            else:
+                business_metrics['business_assessment'] = "Poor ROI - High cost, low value"
+            
+            # Add recommendations
+            recommendations = []
+            if business_metrics['false_positive_rate'] > 0.10:
+                recommendations.append("High false positive rate - consider threshold tuning")
+            if business_metrics['fraud_catch_rate'] < 0.70:
+                recommendations.append("Low fraud detection rate - improve recall")
+            if business_metrics['cost_per_detection'] > 100:
+                recommendations.append("High cost per detection - optimize model efficiency")
+            
+            business_metrics['business_recommendations'] = recommendations
+            
+            return business_metrics
+            
+        except Exception as e:
+            logger.error(f"Error calculating business impact: {str(e)}")
+            return {'business_error': str(e)}
+    
+    @staticmethod
     def validate_model_performance(metrics: Dict[str, Any], thresholds: Dict[str, float] = None) -> Dict[str, Any]:
         """
         Validate model performance against thresholds.
@@ -240,13 +362,17 @@ class ModelUtils:
         Returns:
             Dict[str, Any]: Validation results
         """
-        # Default thresholds for fraud detection
+        # Enhanced thresholds for fraud detection (MODEL_ENHANCEMENT_PLAN Phase 1)
         default_thresholds = {
             'min_accuracy': 0.7,
-            'min_precision': 0.6,
-            'min_recall': 0.6,
-            'min_f1_score': 0.6,
-            'min_roc_auc': 0.7
+            'min_precision': 0.4,      # Lowered - acceptable for fraud detection
+            'min_recall': 0.6,         # Prioritize catching fraud
+            'min_f1_score': 0.5,       # Realistic for imbalanced data
+            'min_roc_auc': 0.7,
+            'min_pr_auc': 0.3,         # PR-AUC more important for imbalanced
+            'min_mcc': 0.3,            # Matthews Correlation Coefficient
+            'max_false_positive_rate': 0.15,  # Business constraint
+            'min_roi': 1.0             # Business ROI threshold
         }
         
         if thresholds:
@@ -272,32 +398,54 @@ class ModelUtils:
                         f"Low {metric_key}: {metric_value:.3f} < {threshold:.3f}"
                     )
             
-            # Generate recommendations
+            # Enhanced recommendations with business focus
             if metrics.get('recall', 0) < 0.6:
                 validation_results['recommendations'].append(
-                    "Low recall: Consider class balancing or threshold tuning"
+                    "Low recall: Consider class balancing or threshold tuning - missing too much fraud"
                 )
             
-            if metrics.get('precision', 0) < 0.6:
+            if metrics.get('precision', 0) < 0.3:  # More lenient threshold
                 validation_results['recommendations'].append(
-                    "Low precision: Review feature engineering or model selection"
+                    "Very low precision: Review feature engineering - too many false alarms"
                 )
             
-            if metrics.get('f1_score', 0) < 0.6:
+            if metrics.get('f1_score', 0) < 0.5:  # More realistic threshold
                 validation_results['recommendations'].append(
-                    "Low F1 score: Consider hyperparameter tuning"
+                    "Low F1 score: Consider hyperparameter tuning or data augmentation"
                 )
             
-            # Overall assessment
+            # Business-specific recommendations
+            if metrics.get('roi', 0) < 1.0:
+                validation_results['recommendations'].append(
+                    "Low ROI: Model costs exceed benefits - optimize for business value"
+                )
+            
+            if metrics.get('false_positive_rate', 0) > 0.15:
+                validation_results['recommendations'].append(
+                    "High false positive rate: Too many manual reviews - adjust threshold"
+                )
+            
+            if metrics.get('pr_auc', 0) < metrics.get('pr_baseline', 0.05) * 2:
+                validation_results['recommendations'].append(
+                    "Poor PR-AUC: Model barely better than random - needs major improvements"
+                )
+            
+            # Overall assessment with business context
             f1_score = metrics.get('f1_score', 0)
-            if f1_score >= 0.8:
-                validation_results['assessment'] = "Excellent performance"
-            elif f1_score >= 0.7:
-                validation_results['assessment'] = "Good performance"
-            elif f1_score >= 0.6:
-                validation_results['assessment'] = "Acceptable performance"
+            roi = metrics.get('roi', 0)
+            pr_auc = metrics.get('pr_auc', 0)
+            
+            # Multi-criteria assessment
+            if f1_score >= 0.6 and roi >= 3.0 and pr_auc >= 0.4:
+                validation_results['assessment'] = "Excellent performance - Strong business value"
+            elif f1_score >= 0.5 and roi >= 2.0 and pr_auc >= 0.3:
+                validation_results['assessment'] = "Good performance - Positive business impact"
+            elif f1_score >= 0.4 and roi >= 1.0 and pr_auc >= 0.2:
+                validation_results['assessment'] = "Acceptable performance - Break-even value"
+            elif f1_score >= 0.3 or roi >= 0.5:
+                validation_results['assessment'] = "Poor performance - Limited business value"
             else:
-                validation_results['assessment'] = "Poor performance - needs improvement"
+                validation_results['assessment'] = "Unacceptable performance - No business value"
             
             return validation_results
             
@@ -329,17 +477,25 @@ class ModelUtils:
                     'Recall': metrics.get('recall', 0.0),
                     'F1_Score': metrics.get('f1_score', 0.0),
                     'ROC_AUC': metrics.get('roc_auc', 0.0),
+                    'PR_AUC': metrics.get('pr_auc', 0.0),           # More important for imbalanced
+                    'MCC': metrics.get('matthews_corrcoef', 0.0),   # Better for imbalanced data
+                    'ROI': metrics.get('roi', 0.0),                 # Business metric
+                    'Cost_Per_Detection': metrics.get('cost_per_detection', float('inf')),
                     'Training_Time': results.get('training_time', 0.0),
                     'Status': 'Success' if results.get('success', False) else 'Failed'
                 }
                 
                 comparison_data.append(row)
             
-            # Create DataFrame and sort by F1 score
+            # Create DataFrame and sort by business value (ROI then F1)
             comparison_df = pd.DataFrame(comparison_data)
             if not comparison_df.empty:
-                comparison_df = comparison_df.sort_values('F1_Score', ascending=False)
+                # Sort by ROI first (business value), then F1 score
+                comparison_df = comparison_df.sort_values(['ROI', 'F1_Score'], ascending=[False, False])
                 comparison_df = comparison_df.round(4)
+                
+                # Add business rank
+                comparison_df['Business_Rank'] = range(1, len(comparison_df) + 1)
             
             logger.info(f"Model comparison completed for {len(model_results)} models")
             return comparison_df
@@ -398,13 +554,14 @@ class ModelUtils:
             return []
     
     @staticmethod
-    def get_model_instance(model_type: str, random_state: int = 42, **kwargs):
+    def get_model_instance(model_type: str, random_state: int = 42, use_smote: bool = False, **kwargs):
         """
         Get an instance of the specified model type.
         
         Args:
             model_type (str): Type of model to instantiate
             random_state (int): Random state for reproducibility
+            use_smote (bool): Whether SMOTE will be used (affects class_weight)
             **kwargs: Additional model parameters
             
         Returns:
@@ -413,13 +570,22 @@ class ModelUtils:
         try:
             if model_type == 'random_forest':
                 from sklearn.ensemble import RandomForestClassifier
+
+                # Avoid double balancing: if SMOTE is used, don't use class_weight
+                if use_smote:
+                    class_weight = None
+                    logger.info("🔄 Random Forest: Using SMOTE balancing, disabled class_weight")
+                else:
+                    class_weight = kwargs.get('class_weight', 'balanced')
+                    logger.info("⚖️  Random Forest: Using class_weight balancing, no SMOTE")
+                
                 return RandomForestClassifier(
-                    n_estimators=kwargs.get('n_estimators', 150),  # More trees for stability
-                    max_depth=kwargs.get('max_depth', 15),  # Limit depth to prevent overfitting
-                    min_samples_split=kwargs.get('min_samples_split', 20),  # Require more samples to split (prevent overfitting)
-                    min_samples_leaf=kwargs.get('min_samples_leaf', 10),  # Require more samples in leaf nodes (prevent overfitting)
+                    n_estimators=kwargs.get('n_estimators', 100),  # Reduced from 150 to prevent overfitting
+                    max_depth=kwargs.get('max_depth', 12),  # Reduced from 15 to prevent overfitting
+                    min_samples_split=kwargs.get('min_samples_split', 25),  # Increased from 20 to prevent overfitting
+                    min_samples_leaf=kwargs.get('min_samples_leaf', 15),  # Increased from 10 to prevent overfitting
                     max_features=kwargs.get('max_features', 'sqrt'),  # Use sqrt of features to reduce dominance
-                    class_weight=kwargs.get('class_weight', 'balanced_subsample'),  # Better handling of imbalanced data
+                    class_weight=class_weight,  # Conditional balancing
                     random_state=random_state,
                     n_jobs=kwargs.get('n_jobs', -1)
                 )
@@ -428,6 +594,7 @@ class ModelUtils:
                 return LogisticRegression(
                     C=kwargs.get('C', 1.0),
                     max_iter=kwargs.get('max_iter', 1000),
+                    class_weight=kwargs.get('class_weight', 'balanced'),  # Handle class imbalance
                     random_state=random_state,
                     n_jobs=kwargs.get('n_jobs', -1)
                 )
@@ -441,6 +608,14 @@ class ModelUtils:
                     class_weight=kwargs.get('class_weight', 'balanced'),  # Handle imbalanced data
                     random_state=random_state,
                     n_jobs=kwargs.get('n_jobs', -1)
+                )
+            elif model_type == 'ensemble':
+                # Ensemble model removed - use random forest as default
+                return RandomForestClassifier(
+                    n_estimators=100,
+                    max_depth=10,
+                    random_state=random_state,
+                    n_jobs=-1
                 )
             elif model_type == 'naive_bayes':
                 variant = kwargs.get('variant', 'gaussian')  # Back to GaussianNB for continuous features

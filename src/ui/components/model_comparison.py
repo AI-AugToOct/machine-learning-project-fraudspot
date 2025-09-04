@@ -52,7 +52,7 @@ def render_ensemble_voting_analysis():
             'company': 'HungerStation',
             'job_title': 'Software Engineer',
             'job_description': 'Join our engineering team to build food delivery products.',
-            'poster_verified': 0,
+            'content_quality_score': 0.8,
             'has_company_logo': 1,
             'completeness_score': 0.9,
             'total_suspicious_keywords': 0
@@ -61,7 +61,7 @@ def render_ensemble_voting_analysis():
             'company': 'Easy Money LLC',
             'job_title': 'Work from Home - Make Money Fast',
             'job_description': 'Earn $5000 weekly! No experience! Send money first!',
-            'poster_verified': 0,
+            'content_quality_score': 0.8,
             'has_company_logo': 0,
             'total_suspicious_keywords': 5,
             'total_urgency_keywords': 4
@@ -70,7 +70,7 @@ def render_ensemble_voting_analysis():
             'company': 'Unknown Tech Solutions',
             'job_title': 'Developer Position',
             'job_description': 'Looking for developer. Good salary.',
-            'poster_verified': 0,
+            'content_quality_score': 0.8,
             'has_company_logo': 0,
             'completeness_score': 0.6
         }
@@ -85,11 +85,13 @@ def render_ensemble_voting_analysis():
     if st.button("🔍 Analyze Ensemble Voting", type="primary"):
         with st.spinner("Running ensemble analysis..."):
             try:
-                from src.pipeline.pipeline_manager import PipelineManager
-                pm = PipelineManager()
+                # Use FraudDetectionPipeline (unified system)
+                from src.core.fraud_pipeline import FraudDetectionPipeline
+                pipeline = FraudDetectionPipeline()
                 
                 # Get prediction
-                result = pm.predict(test_cases[selected_case])
+                fraud_result = pipeline.process(test_cases[selected_case])
+                result = fraud_result.to_ui_dict()
                 
                 if result.get('success', True):
                     # Display overall result
@@ -193,12 +195,15 @@ def render_ensemble_model_status():
     st.markdown("#### 📊 Ensemble Model Status")
     
     try:
-        from src.core.ensemble_predictor import EnsemblePredictor
-        ensemble = EnsemblePredictor()
-        
-        # Load models first, then get status
-        ensemble.load_models()
-        status = ensemble.get_model_status()
+        # Use cached fraud pipeline from session state (initialized in main.py)
+        if 'cached_fraud_pipeline' in st.session_state:
+            pipeline = st.session_state['cached_fraud_pipeline']
+            status = {'models_loaded': len(pipeline.models), 'model_status': {name: 'loaded' if name in pipeline.models else 'missing' for name in ['random_forest', 'logistic_regression', 'naive_bayes', 'svm']}}
+        else:
+            # Fallback if somehow not initialized (shouldn't happen)
+            from src.core.fraud_pipeline import FraudDetectionPipeline
+            pipeline = FraudDetectionPipeline()
+            status = {'models_loaded': len(pipeline.models), 'model_status': {name: 'loaded' if name in pipeline.models else 'missing' for name in ['random_forest', 'logistic_regression', 'naive_bayes', 'svm']}}
         
         model_names = {
             'random_forest': '🌲 Random Forest',

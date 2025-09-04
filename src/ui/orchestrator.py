@@ -1,12 +1,11 @@
 """
-UI Orchestrator - REFACTORED FOR DRY CONSOLIDATION
-This module orchestrates the UI pipeline using ONLY core modules and services.
-ALL business logic has been moved to core modules.
+UI Orchestrator - CONTENT-FOCUSED VERSION
+This module orchestrates the UI pipeline for content-focused fraud detection.
+Focuses on job posting content and company metrics, not profile data.
 
-Version: 3.0.0 - DRY Consolidation
+Version: 4.0.0 - Content-Focused Orchestration
 """
 
-import hashlib
 import logging
 import os
 import sys
@@ -22,12 +21,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 # Also add parent directory for relative imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.ui.components.analysis import render_results
-from src.ui.components.job_poster import display_fraud_focused_profile, display_job_poster_details
-
 # Import ONLY from core modules and services (single source of truth)
-from src.core import FraudDetector
+from src.core.fraud_pipeline import FraudDetectionPipeline
 from src.services import ScrapingService, SerializationService
+from src.ui.components.analysis import render_results
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +36,9 @@ def _clear_analysis_session():
     # Collect all keys that might cause pollution
     for key in list(st.session_state.keys()):
         if any(prefix in key for prefix in [
-            'profile_', 'analysis_done', 'current_job_data', 
-            'show_profile_fragment', 'async_results', 'ready_for_analysis',
-            'no_profile_analysis_done', 'initial_analysis_done_',
-            'cached_fraud_detector', 'cached_ensemble', 'fraud_prediction_',
-            'analysis_result_', 'job_features_', 'verification_data_'
+            'analysis_done', 'current_job_data', 'async_results', 'ready_for_analysis',
+            'analysis_done_', 'cached_fraud_detector', 'cached_ensemble', 
+            'fraud_prediction_', 'analysis_result_', 'job_features_'
         ]):
             keys_to_clear.append(key)
     
@@ -55,18 +50,21 @@ def _clear_analysis_session():
 
 
 def _get_cached_scraping_service():
-    """Get cached ScrapingService to prevent repeated initialization."""
-    if 'cached_scraping_service' not in st.session_state:
+    """Get pre-cached ScrapingService from main.py initialization."""
+    # Use pre-cached scraping service from main.py initialization
+    if 'cached_scraping_service' in st.session_state:
+        return st.session_state['cached_scraping_service']
+    else:
+        # Fallback if not initialized (shouldn't happen)
+        logger.warning("⚠️ Scraping service not pre-cached, creating new instance")
+        # Direct service instantiation
         st.session_state['cached_scraping_service'] = ScrapingService()
-        logger.info("Created cached ScrapingService instance")
-    return st.session_state['cached_scraping_service']
-
-
+        return st.session_state['cached_scraping_service']
 
 
 def render_analysis_section_from_url(url: str, fraud_loader=None) -> None:
     """
-    Render the main analysis section using ONLY core modules.
+    Render the main analysis section using content-focused approach.
     
     Args:
         url (str): The LinkedIn job URL to analyze
@@ -88,7 +86,6 @@ def render_analysis_section_from_url(url: str, fraud_loader=None) -> None:
     
     # Scrape job posting with minimal spinner
     try:
-        # ONLY wrap the actual scraping call in spinner
         import time
         start_time = time.time()
         
@@ -149,84 +146,17 @@ def render_analysis_section_from_url(url: str, fraud_loader=None) -> None:
             from src.ui.components.job_display import display_modern_job_card
             display_modern_job_card(job_data)
             
-            # Handle profile section FIRST (to start async fetch)
+            # Run content-focused fraud analysis
             st.markdown("---")
-            st.markdown("### Job Poster Profile")
+            st.markdown("### Content-Focused Fraud Analysis")
+            st.info("📊 Analyzing job posting content and company data...")
             
-            # Show initial analysis without profile
-            st.markdown("---")
-            st.markdown("### Initial Fraud Analysis")
-            st.info("📊 Analyzing job posting data...")
-            
-            # Run initial analysis without profile (force fresh analysis each time)
+            # Run analysis without profile dependency
             try:
                 _run_fraud_analysis_pipeline(job_data)
             except Exception as e:
-                st.error(f"Initial fraud analysis failed: {str(e)}")
+                st.error(f"Content analysis failed: {str(e)}")
                 st.info("Job data is still available above")
-            
-            # Add manual profile fetch button
-            profile_url = job_posting.get('poster_profile_url')
-            if profile_url:
-                st.markdown("---")
-                st.markdown("### Profile Verification")
-                
-                # Check if profile already fetched
-                import hashlib
-                url_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
-                profile_key = f"profile_{url_hash}"
-                profile_data_key = f"{profile_key}_data"
-                
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    if st.button("🔍 Fetch Profile", key=f"fetch_{profile_key}"):
-                        # Clear any existing profile data
-                        if profile_data_key in st.session_state:
-                            del st.session_state[profile_data_key]
-                        
-                        with st.spinner("Fetching profile data..."):
-                            try:
-                                scraping_service = _get_cached_scraping_service()
-                                profile_data = scraping_service.scrape_profile(profile_url)
-                                st.session_state[profile_data_key] = profile_data
-                                st.success("✅ Profile fetched successfully!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Profile fetch failed: {str(e)}")
-                
-                with col2:
-                    st.caption(f"Profile URL: {profile_url[:50]}..." if len(profile_url) > 50 else f"Profile URL: {profile_url}")
-                
-                # Display profile if available
-                if profile_data_key in st.session_state:
-                    profile_data = st.session_state[profile_data_key]
-                    if profile_data and isinstance(profile_data, dict) and profile_data.get('success'):
-                        st.markdown("---")
-                        st.markdown("#### Profile Information")
-                        try:
-                            display_fraud_focused_profile(profile_data, job_data)
-                            
-                            # Add re-analysis button
-                            st.markdown("---")
-                            col1, col2 = st.columns([1, 2])
-                            with col1:
-                                if st.button("🔄 Re-analyze with Profile", key=f"reanalyze_{profile_key}"):
-                                    st.markdown("### Updated Fraud Analysis (Including Profile)")
-                                    st.info("✅ Including profile verification data in analysis")
-                                    try:
-                                        enhanced_job_data = {**job_data, 'profile_data': profile_data}
-                                        _run_fraud_analysis_pipeline(enhanced_job_data)
-                                    except Exception as e:
-                                        st.error(f"Re-analysis failed: {str(e)}")
-                            with col2:
-                                st.caption("Compare the analysis results before and after profile verification")
-                        except Exception as e:
-                            st.error(f"❌ Error displaying profile: {str(e)}")
-                    else:
-                        st.warning("⚠️ Profile is private or could not be accessed")
-                        st.info("💡 This is common for private LinkedIn profiles")
-            else:
-                st.info("No profile URL available for this job posting")
     
     except Exception as e:
         logger.error(f"Analysis error: {str(e)}") 
@@ -300,10 +230,12 @@ def _run_analysis_pipeline(job_data: Dict[str, Any]) -> None:
     serialization_service = SerializationService()
     features = serialization_service.prepare_single_prediction(job_data)
     
-    # Step 4: Use FraudDetector for ALL prediction logic (single source of truth)
-    st.write("Using FraudDetector for comprehensive analysis...")
-    fraud_detector = FraudDetector()
-    prediction = fraud_detector.predict_fraud(job_data, use_ml=True)
+    # Step 4: Use NEW FraudDetectionPipeline for ALL prediction logic (unified)
+    st.write("Using unified FraudDetectionPipeline for content-focused analysis...")
+    from src.core.fraud_pipeline import FraudDetectionPipeline
+    pipeline = FraudDetectionPipeline()
+    fraud_result = pipeline.process(job_data)
+    prediction = fraud_result.to_ui_dict()
     fraud_indicators = prediction.get('fraud_indicators', {})
     
     # Handle prediction results from FraudDetector
@@ -313,9 +245,8 @@ def _run_analysis_pipeline(job_data: Dict[str, Any]) -> None:
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Try Rule-Based Analysis", type="primary"):
-                prediction = fraud_detector.predict_fraud(job_data, use_ml=False)
-                st.rerun()
+            st.error("ML models required for production system")
+            st.info("Please ensure ML models are properly loaded")
         
         with col2:
             if st.button("Skip Analysis"):
@@ -334,7 +265,7 @@ def _run_analysis_pipeline(job_data: Dict[str, Any]) -> None:
         'explanation': prediction.get('explanation', {}),
         'metadata': {
             'feature_count': len(features) if isinstance(features, dict) else 0,
-            'analysis_engine': 'FraudSpot v3.0 - DRY Architecture',
+            'analysis_engine': 'FraudSpot v4.0 - Content-Focused',
             'core_modules_used': True,
             'prediction_method': prediction.get('prediction_method', 'FraudDetector')
         }
@@ -352,61 +283,35 @@ def _run_analysis_pipeline(job_data: Dict[str, Any]) -> None:
         'timestamp': result['timestamp'],
         'is_fraud': prediction.get('is_fraud', False),
         'confidence': prediction.get('confidence', 0.0),
-        'company': job_data.get('company_name', 'Unknown'),
+        'company': job_data.get('company_name', ''),
         'method': result['scraping_method']
     }
     st.session_state['analysis_history'].append(analysis_summary)
 
 
-# REMOVED: make_real_prediction function - ALL prediction logic moved to FraudDetector core module
-
-
-# REMOVED: make_fallback_prediction function - ALL prediction logic moved to FraudDetector core module
-
-
-# REMOVED: extract_red_flags function - ALL analysis logic moved to FraudDetector core module
-
-
-# REMOVED: extract_positive_indicators function - ALL analysis logic moved to FraudDetector core module
-
-
 def _run_fraud_analysis_pipeline(job_data: Dict[str, Any]) -> None:
     """
-    Run fraud analysis pipeline using ONLY core modules.
+    Run content-focused fraud analysis pipeline using ONLY core modules.
     
     Args:
         job_data: Scraped job data
     """
-    # Check if profile data is available for enhanced analysis
-    profile_url = job_data.get('poster_profile_url')
-    profile_data = None
-    
-    if profile_url:
-        # Get profile data from session state if available
-        import hashlib
-        profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
-        profile_data_key = f"profile_{profile_hash}_data"
-        
-        if profile_data_key in st.session_state:
-            profile_data = st.session_state[profile_data_key]
-            if profile_data and profile_data.get('success'):
-                st.info("✅ Including profile verification data in analysis")
-            else:
-                profile_data = None
-                st.info("ℹ️ Profile data not available - analyzing job posting only")
     try:
         # Job card already displayed - start with fraud analysis
         from src.ui.components.fraud_dashboard import display_comprehensive_fraud_dashboard
 
-        # Initialize FraudDetector with ensemble models (force fresh instance)
+        # Initialize FraudDetectionPipeline (unified system)
         try:
-            from src.core.ensemble_predictor import EnsemblePredictor
-            # Create completely fresh instances to prevent cached predictions
-            ensemble = EnsemblePredictor()
-            ensemble.load_models()
-            fraud_detector = FraudDetector(model_pipeline=ensemble)
+            # Use cached FraudDetectionPipeline to prevent models loading multiple times
+            if 'cached_fraud_pipeline' not in st.session_state:
+                st.session_state['cached_fraud_pipeline'] = FraudDetectionPipeline()
+                logger.info("✅ Created and cached FraudDetectionPipeline instance")
+            else:
+                logger.info("♻️ Using cached FraudDetectionPipeline instance")
             
-            logger.info("Created fresh FraudDetector and EnsemblePredictor instances")
+            fraud_pipeline = st.session_state['cached_fraud_pipeline']
+            
+            logger.info("Using cached unified pipeline to prevent duplicate loading")
             
             # Extract job posting data and add unique identifier
             job_posting = job_data
@@ -414,199 +319,87 @@ def _run_fraud_analysis_pipeline(job_data: Dict[str, Any]) -> None:
             # Add unique analysis identifier to prevent cross-contamination
             job_posting['analysis_id'] = f"{hash(str(job_data))}_{int(time.time() * 1000)}"
             
-            logger.info(f"Starting analysis for job ID: {job_posting.get('analysis_id', 'unknown')}")
+            logger.info(f"Starting content-focused analysis for job ID: {job_posting.get('analysis_id', 'unknown')}")
             
             if not job_posting:
                 st.warning("No job data available for analysis")
                 return
             
-            # Use FraudDetector for comprehensive analysis
-            # Include profile data if available for enhanced analysis
+            # Use FraudDetectionPipeline for content-focused analysis
             enhanced_job_data = {**job_posting}
-            if profile_data:
-                enhanced_job_data['profile_data'] = profile_data
             
-            # Wait for profile data if URL exists (synchronous for demo)
-            if profile_url and not profile_data:
-                st.info("⏳ Waiting for profile data to complete fraud analysis...")
-                # Check for async profile completion
-                import hashlib
-                profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
-                profile_data_key = f"profile_{profile_hash}_data"
-                profile_status_key = f"profile_{profile_hash}_status"
-                
-                # Wait up to 60 seconds for profile data
-                max_wait = 60
-                wait_time = 0
-                while wait_time < max_wait and st.session_state.get(profile_status_key) == 'pending':
-                    time.sleep(1)
-                    wait_time += 1
-                    
-                    # Check for completed async results
-                    if 'async_results' in st.session_state:
-                        result_key = f"result_profile_{profile_hash}"
-                        if result_key in st.session_state['async_results']:
-                            result = st.session_state['async_results'][result_key]
-                            if result['status'] == 'complete':
-                                profile_data = result['data']
-                                if profile_data and profile_data.get('success'):
-                                    enhanced_job_data['profile_data'] = profile_data
-                                    st.success("✅ Profile data loaded - including in analysis")
-                                break
-                            elif result['status'] == 'error':
-                                st.warning("⚠️ Profile data failed to load - proceeding with job data only")
-                                break
-                    
-                    # Update UI every 5 seconds
-                    if wait_time % 5 == 0:
-                        st.info(f"⏳ Still waiting for profile data... ({wait_time}s elapsed)")
-                
-                if wait_time >= max_wait:
-                    st.warning("⚠️ Profile data timeout - proceeding with job data only")
+            # Make fresh ML prediction using cached unified pipeline
+            logger.info(f"Making content-focused ML prediction for job {enhanced_job_data.get('analysis_id', 'unknown')}")
+            fraud_result = fraud_pipeline.process(enhanced_job_data)
+            prediction = fraud_result.to_ui_dict()
+            logger.info(f"Content-focused ML prediction completed: fraud_probability={prediction.get('fraud_probability', 'N/A')}")
             
-            # Make fresh ML prediction with unique job identifier
-            logger.info(f"Making ML prediction for job {enhanced_job_data.get('analysis_id', 'unknown')}")
-            prediction = fraud_detector.predict_fraud(enhanced_job_data, use_ml=True)
-            logger.info(f"ML prediction completed: fraud_score={prediction.get('fraud_score', 'N/A')}")
-            
-            # Validate prediction data to prevent format errors
+            # NO DEFAULT VALUES - USE ONLY REAL PREDICTION DATA
             if not prediction:
-                prediction = {'fraud_score': 0, 'risk_level': 'Unknown', 'error': 'No prediction data'}
-            
-            # Ensure required fields exist with safe defaults
-            prediction.setdefault('fraud_score', 0)
-            prediction.setdefault('risk_level', 'Unknown')
-            prediction.setdefault('explanation', {})
+                st.error("❌ No prediction data available from ML models")
+                return
             
         except Exception as model_error:
             st.error(f"❌ Failed to load ML models: {model_error}")
             st.info("💡 Train models first using: python train_model_cli.py --model all_models --no-interactive")
             
-            # Show button but don't automatically fallback
-            if st.button("📊 Use Rule-Based Analysis Instead"):
-                fraud_detector = FraudDetector()  # No model - explicit fallback only
-                # Use enhanced data with profile if available
-                enhanced_job_data = {**job_posting}
-                if profile_data:
-                    enhanced_job_data['profile_data'] = profile_data
-                
-                # Also wait for profile data in rule-based mode if URL exists
-                if profile_url and not profile_data:
-                    st.info("⏳ Waiting for profile data for rule-based analysis...")
-                    import hashlib
-                    profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
-                    
-                    # Wait up to 30 seconds for profile data (shorter for rule-based)
-                    max_wait = 30
-                    wait_time = 0
-                    while wait_time < max_wait and st.session_state.get(f"profile_{profile_hash}_status") == 'pending':
-                        time.sleep(1)
-                        wait_time += 1
-                        
-                        # Check for completed async results
-                        if 'async_results' in st.session_state:
-                            result_key = f"result_profile_{profile_hash}"
-                            if result_key in st.session_state['async_results']:
-                                result = st.session_state['async_results'][result_key]
-                                if result['status'] == 'complete':
-                                    profile_data = result['data']
-                                    if profile_data and profile_data.get('success'):
-                                        enhanced_job_data['profile_data'] = profile_data
-                                        st.success("✅ Profile data loaded - including in rule-based analysis")
-                                    break
-                                elif result['status'] == 'error':
-                                    st.warning("⚠️ Profile data failed - using rule-based with job data only")
-                                    break
-                        
-                        if wait_time % 10 == 0:
-                            st.info(f"⏳ Still waiting... ({wait_time}s elapsed)")
-                    
-                    if wait_time >= max_wait:
-                        st.warning("⚠️ Profile timeout - using rule-based with job data only")
-                
-                prediction = fraud_detector.predict_fraud(enhanced_job_data, use_ml=False)
-                
-                # Validate prediction data to prevent format errors
-                if not prediction:
-                    prediction = {'fraud_score': 0, 'risk_level': 'Unknown', 'error': 'No prediction data'}
-                
-                # Ensure required fields exist with safe defaults
-                prediction.setdefault('fraud_score', 0)
-                prediction.setdefault('risk_level', 'Unknown')
-                prediction.setdefault('explanation', {})
-            else:
-                # Don't show analysis at all - user must explicitly request rule-based
-                st.info("Analysis unavailable - ML models not loaded")
-                return
+            # PRODUCTION MODE: No rule-based fallback available
+            st.error("🤖 Production system requires ML models only")
+            st.info("Please ensure ML models are properly loaded and available")
+            return  # Exit without attempting analysis
         
-        # Analysis completed - no need for status message
-        
-        # Handle prediction results
+        # Handle prediction results  
         if not prediction.get('success', True):
-            # Only show rule-based option on explicit user request
+            # PRODUCTION MODE: No rule-based fallback available
             st.error(f"ML analysis failed: {prediction.get('error', 'Unknown error')}")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("📊 Use Rule-Based Analysis"):
-                    # Use enhanced data with profile if available
-                    enhanced_job_data = {**job_posting}
-                    if profile_data:
-                        enhanced_job_data['profile_data'] = profile_data
-                    
-                    # Wait for profile data in rule-based fallback mode too
-                    if profile_url and not profile_data:
-                        st.info("⏳ Loading profile data for rule-based analysis...")
-                        import hashlib
-                        profile_hash = hashlib.md5(profile_url.encode()).hexdigest()[:12]
-                        
-                        # Check async results immediately for quick response
-                        if 'async_results' in st.session_state:
-                            result_key = f"result_profile_{profile_hash}"
-                            if result_key in st.session_state['async_results']:
-                                result = st.session_state['async_results'][result_key]
-                                if result['status'] == 'complete':
-                                    profile_data = result['data']
-                                    if profile_data and profile_data.get('success'):
-                                        enhanced_job_data['profile_data'] = profile_data
-                                        st.success("✅ Profile data loaded for rule-based analysis")
-                    
-                    prediction = fraud_detector.predict_fraud(enhanced_job_data, use_ml=False)
-                
-                # Validate prediction data to prevent format errors
-                if not prediction:
-                    prediction = {'fraud_score': 0, 'risk_level': 'Unknown', 'error': 'No prediction data'}
-                
-                # Ensure required fields exist with safe defaults
-                prediction.setdefault('fraud_score', 0)
-                prediction.setdefault('risk_level', 'Unknown')
-                prediction.setdefault('explanation', {})
-                st.rerun()
-            with col2:
-                if st.button("📄 Show Job Data Only"):
-                    # Just display the job data without any analysis
-                    st.info("Job data displayed - analysis skipped")
-                    return
+            st.error("🤖 Production system requires ML models only")
+            st.info("Please ensure ML models are properly loaded and available")
+            return  # Exit without showing analysis
         else:
-            # Prepare data for fraud dashboard with prediction results
-            analysis_data = {
-                **job_posting,
-                **prediction  # Include all prediction results
+            # Use the enhanced job data for analysis
+            analysis_data = {**job_posting}  # Start with original job data
+            
+            # Add prediction results WITHOUT overwriting enriched fields
+            for key, value in prediction.items():
+                if key not in analysis_data:  # Only add if not already present
+                    analysis_data[key] = value
+            
+            # Preserve content-focused enriched fields (both field name formats)
+            enriched_fields = {
+                'company_legitimacy_score': job_posting.get('company_legitimacy_score'),
+                'content_quality_score': job_posting.get('content_quality_score'),
+                'contact_risk_score': job_posting.get('contact_risk_score'),
+                'company_followers': job_posting.get('company_followers') or job_posting.get('followers'),
+                'company_employees': job_posting.get('company_employees') or job_posting.get('employees_in_linkedin'),
+                'company_founded': job_posting.get('company_founded') or job_posting.get('founded'),
+                'company_size': job_posting.get('company_size'),
+                'has_company_logo': job_posting.get('has_company_logo'),
+                'has_company_website': job_posting.get('has_company_website'),
+                # Add alternative field mappings
+                'followers': job_posting.get('followers') or job_posting.get('company_followers'),
+                'employees_in_linkedin': job_posting.get('employees_in_linkedin') or job_posting.get('company_employees'),
+                'founded': job_posting.get('founded') or job_posting.get('company_founded'),
+                'job_industries': job_posting.get('job_industries'),
+                'industry': job_posting.get('industry') or job_posting.get('job_industries')
             }
             
-            # Render fraud analysis dashboard
+            # Only update if the enriched value exists and is not None (0 is a valid value)
+            for field, value in enriched_fields.items():
+                if value is not None:
+                    analysis_data[field] = value
+                    logger.info(f"✅ PRESERVED ENRICHED FIELD: {field}={value}")
+            
+            logger.info(f"🎯 CONTENT-FOCUSED ANALYSIS DATA - content_score: {analysis_data.get('content_quality_score', 'MISSING')}, company_score: {analysis_data.get('company_legitimacy_score', 'MISSING')}")
+            
+            # Render content-focused fraud analysis dashboard
             display_comprehensive_fraud_dashboard(analysis_data)
             
             # Store in session state for history
             _store_analysis_result(job_posting, prediction)
     
     except Exception as e:
-        logger.error(f"Fraud analysis pipeline failed: {str(e)}")
-        st.error(f"Fraud analysis failed: {str(e)}")
-
-
-# Profile fetch functionality removed - now handled by scraper directly
-# to prevent UI blocking. Profile data comes with initial scrape when available.
+        logger.error(f"Content-focused fraud analysis pipeline failed: {str(e)}")
+        st.error(f"Content-focused fraud analysis failed: {str(e)}")
 
 
 def _store_analysis_result(job_posting: Dict[str, Any], prediction: Dict[str, Any]) -> None:
@@ -616,14 +409,9 @@ def _store_analysis_result(job_posting: Dict[str, Any], prediction: Dict[str, An
     
     analysis_summary = {
         'timestamp': pd.Timestamp.now(),
-        'job_title': job_posting.get('job_title', 'Unknown'),
-        'company': job_posting.get('company_name', 'Unknown'),
+        'job_title': job_posting.get('job_title', ''),
+        'company': job_posting.get('company_name', ''),
         'fraud_score': prediction.get('fraud_score', 0),
-        'risk_level': prediction.get('risk_level', 'Unknown')
+        'risk_level': prediction.get('risk_level', '')
     }
     st.session_state['analysis_history'].append(analysis_summary)
-
-
-# Fragment removed - now at module level
-
-

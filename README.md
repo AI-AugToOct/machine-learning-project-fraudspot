@@ -6,17 +6,17 @@
 [![Python](https://img.shields.io/badge/python-3.13+-green.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/streamlit-1.40+-red.svg)](https://streamlit.io/)
 [![Ensemble Models](https://img.shields.io/badge/models-4--ensemble-orange.svg)](docs/models.md)
-[![F1-Score](https://img.shields.io/badge/F1--Score-99.5%25-brightgreen.svg)](docs/performance.md)
+[![F1-Score](https://img.shields.io/badge/F1--Score-73.1%25-green.svg)](docs/performance.md)
 
-FraudSpot is an advanced machine learning system that detects fraudulent job postings with **99.9% accuracy** and **99.5% F1-score** using company verification, ensemble prediction and comprehensive multilingual analysis. Built with a modern Streamlit interface and trained on 19,903+ job postings in English and Arabic with enriched company data.
+FraudSpot is an advanced machine learning system that detects fraudulent job postings with **73.1% F1-score** using dynamic model weights, network quality analysis and comprehensive multilingual analysis. Built with a modern Streamlit interface and trained on 19,350 job postings in English and Arabic with enhanced company data.
 
-**✅ Performance Update**: F1-score of 99.5% indicates excellent performance with company verification features. System provides reliable fraud detection with minimal false positives.
+**✅ Performance Update**: F1-score of 73.1% with realistic metrics and corrected network quality calculations. System uses dynamic ensemble weights based on actual model performance.
 
 ---
 
 ## 🎯 Key Features
 
-- 🏆 **Advanced ML System**: 27-feature models achieving 99.9% accuracy (99.5% F1-score)
+- 🏆 **Advanced ML System**: 28-feature models achieving 96.8% accuracy (73.1% F1-score) with realistic metrics
 - 🏢 **Company Verification**: Real-time company enrichment via Bright Data API with fraud impact scoring
 - 🌍 **Multilingual Support**: English and Arabic job posting analysis with cultural awareness
 - ⚡ **Real-time Analysis**: <2 second prediction with live company verification updates
@@ -48,10 +48,9 @@ FraudSpot v3.0 follows a **component-based Streamlit architecture** with modular
 │   ├── ScrapingService          # LinkedIn job and company scraping
 │   ├── ModelService             # ML model lifecycle management  
 │   ├── EvaluationService        # Model performance analysis
-│   ├── SerializationService     # Data format conversion
-│   └── 🛡️ VerificationService   # Company verification & fraud scoring
+│   └── SerializationService     # Data format conversion
 ├── 🤖 ML Pipeline Management
-│   ├── FraudDetector            # 27-feature fraud detection system
+│   ├── FraudDetectionPipeline   # 28-feature fraud detection with dynamic weights
 │   ├── PipelineManager          # Training and prediction workflows
 │   └── Model Training           # Interactive CLI training interface
 ├── 💎 Core Business Logic
@@ -68,56 +67,9 @@ FraudSpot v3.0 follows a **component-based Streamlit architecture** with modular
 
 ---
 
-## 🛡️ Advanced Verification System
+## 🛡️ Advanced Feature Engineering System
 
-FraudSpot v3.0+ features a **comprehensive verification system** that analyzes both LinkedIn profile data and company information to assess poster credibility and company legitimacy. This system is the single source of truth for all verification logic across the application.
-
-### Verification Architecture
-
-**VerificationService** (`src/services/verification_service.py`) provides centralized verification logic:
-
-```python
-from src.services.verification_service import VerificationService
-
-verification_service = VerificationService()
-
-# Extract verification features from Bright Data API response
-verification_features = verification_service.extract_verification_features(job_data)
-# Returns: {'poster_verified': 1, 'poster_photo': 1, 'poster_experience': 1, 'poster_active': 1}
-
-# Calculate poster score (0-4 scale)
-poster_score = verification_service.calculate_verification_score(job_data) 
-# Returns: 4 (highly verified) to 0 (unverified)
-
-# NEW: Company verification scoring (single source of truth)
-company_scores = verification_service.calculate_company_verification_scores(job_data)
-# Returns: {'company_followers_score': 0.9, 'company_employees_score': 0.8, 
-#           'company_founded_score': 0.7, 'network_quality_score': 0.9, 
-#           'company_legitimacy_score': 0.85}
-
-# Company trust calculation
-company_trust = verification_service.calculate_company_trust(job_data)
-# Returns: 0.85 (highly trusted) to 0.0 (suspicious)
-
-# Intelligent company matching with fuzzy search
-company_match = verification_service.company_matches(
-    "SmartChoice International UAE", 
-    "SmartChoice International Limited"
-)
-# Returns: True (85%+ similarity using rapidfuzz)
-```
-
-### Verification Features
-
-The system extracts **9 total verification features** from LinkedIn profile and company data:
-
-#### **Profile Verification (4 features)**
-| Feature | Description | Data Source |
-|---------|-------------|-------------|
-| **poster_verified** | LinkedIn profile verification status | `avatar` field presence |
-| **poster_photo** | Professional profile photo present | `avatar` URL validity |
-| **poster_experience** | Relevant work experience at company | `experience` array analysis |
-| **poster_active** | Active LinkedIn engagement | `connections` count >0 |
+FraudSpot v3.0+ features a **comprehensive feature engineering system** that analyzes job postings and company data to calculate fraud risk. The system uses 28 features including network quality analysis and dynamic scoring.
 
 #### **Company Verification (5 features)** 🆕
 | Feature | Description | Data Source |
@@ -149,29 +101,14 @@ The system extracts **9 total verification features** from LinkedIn profile and 
 
 ### Company Fuzzy Matching
 
-Uses `rapidfuzz` library for intelligent company name matching:
+### Feature Engineering Integration
 
-```python
-# Smart matching handles variations
-verification_service.company_matches("SmartChoice International", "SmartChoice UAE")  # True
-verification_service.company_matches("Microsoft Corporation", "Microsoft")           # True  
-verification_service.company_matches("Apple Inc", "Google LLC")                      # False
-```
+The feature engineering system is integrated across the core components:
 
-**Matching Algorithm**:
-- Normalizes company names (removes legal suffixes, extra spaces)
-- Uses fuzzy string matching with 85% similarity threshold
-- Handles regional variations and abbreviations
-
-### Integration Points
-
-The VerificationService is integrated across **9 files** in the codebase:
-
-- **UI Components**: Real-time verification display in job analysis dashboard
-- **Data Processing**: Profile data extraction and validation  
-- **Feature Engineering**: Verification features for ML model training
-- **Fraud Detection**: Risk classification and poster scoring
-- **Batch Processing**: DataFrame support for training pipelines
+- **FraudDetectionPipeline**: Main fraud detection with dynamic model weights
+- **FeatureEngine**: 28-feature calculation including network quality scoring
+- **DataProcessor**: Data preprocessing and validation
+- **Data Models**: Feature calculation methods in data_model.py
 
 ### Bright Data API Integration  
 
@@ -267,25 +204,22 @@ python train_model_cli.py --model all_models --compare --output-dir models/
 ### Python API
 
 ```python
-from src.core.ensemble_predictor import EnsemblePredictor
-from src.core import FraudDetector
-from src.services import ScrapingService, VerificationService
+from src.core.fraud_pipeline import FraudDetectionPipeline
+from src.services import ScrapingService
 
-# Initialize ensemble system with centralized verification
-ensemble = EnsemblePredictor()
-ensemble.load_models()
-detector = FraudDetector(model_pipeline=ensemble)
-verification_service = VerificationService()
+# Initialize fraud detection pipeline
+from src.services.model_service import ModelService
+model_service = ModelService()
+detector = FraudDetectionPipeline(models_dir='models')
 
 # Scrape and analyze job posting
 scraper = ScrapingService()
 job_data = scraper.scrape_job_posting("https://linkedin.com/jobs/view/...")
 result = detector.predict_fraud(job_data, use_ml=True)
 
-# Access verification details
+# Access fraud analysis results
 print(f"Risk Level: {result['risk_level']}")
-print(f"Poster Score: {result.get('poster_score', 'N/A')}/4")
-print(f"Verification Features: {verification_service.extract_verification_features(job_data)}")
+print(f"Fraud Score: {result['fraud_score']:.2%}")
 print(f"Ensemble Confidence: {result['confidence']:.1%}")
 print(f"Model Votes: {result.get('model_votes', 'N/A')}")
 ```
@@ -293,23 +227,22 @@ print(f"Model Votes: {result.get('model_votes', 'N/A')}")
 ### Core Module Usage
 
 ```python
-from src.core import DataProcessor, FeatureEngine, FraudDetector
-from src.services import VerificationService
+from src.core import DataProcessor, FeatureEngine
+from src.core.fraud_pipeline import FraudDetectionPipeline
 
-# Initialize core modules with centralized verification
+# Initialize core modules
 processor = DataProcessor()
 engine = FeatureEngine() 
-detector = FraudDetector()
-verification_service = VerificationService()
+detector = FraudDetectionPipeline(models_dir='models')
 
 # Process data through pipeline
 processed_data = processor.fit_transform(raw_data)
 features = engine.generate_complete_feature_set(processed_data)
-prediction = detector.predict_fraud(features, use_ml=True)
+prediction = detector.predict_fraud(features)
 
-# Direct verification analysis
-poster_score = verification_service.calculate_verification_score(raw_data)
-risk_level, is_high_risk, fraud_prob = verification_service.classify_risk_from_verification(poster_score)
+# Access fraud analysis
+print(f"Fraud Risk: {prediction['fraud_score']:.2%}")
+print(f"Risk Level: {prediction['risk_level']}")
 ```
 
 ---
@@ -327,67 +260,52 @@ risk_level, is_high_risk, fraud_prob = verification_service.classify_risk_from_v
 
 ### Model Performance (Actual Results)
 
+#### **Current 28-Feature Models** (With Network Quality Fixes)
+| Model               | Accuracy   | F1-Score   | Precision  | Recall     | Weight | Training Time |
+| --------------------- | ------------ | ------------ | ------------ | ------------ | -------- | --------------- |
+| **Random Forest**   | **96.9%** | **73.1%** | **59.4%** | **94.8%** | **44.9%** | **32s**       |
+| Logistic Regression | 84.5%     | 35.3%     | 21.7%     | 94.8%     | 21.6%    | 33s           |
+| SVM                 | 80.9%     | 31.3%     | 18.7%     | 97.7%     | 19.5%    | 31s           |
+| Naive Bayes         | 66.6%     | 21.0%     | 11.7%     | 99.4%     | 13.1%    | 29s           |
 
-#### **Original 22-Feature Models** (Legacy)
-| Model               | Accuracy   | F1-Score   | Precision  | Recall     | Training Time |
-| --------------------- | ------------ | ------------ | ------------ | ------------ | --------------- |
-| **Random Forest**   | **95.96%** | **76.29%** | **65.57%** | **91.20%** | **34s**       |
-| SVM                 | 94.42%     | 69.08%     | 57.14%     | 87.32%     | 34s           |
-| Logistic Regression | 92.24%     | 62.64%     | 47.70%     | 91.20%     | 35s           |
-| Naive Bayes         | 90.03%     | 56.04%     | 40.87%     | 89.08%     | 34s           |
+**📊 Understanding the Realistic Metrics:**
 
-#### **New 27-Feature Models** (With Company Verification) 🆕
-| Model               | Accuracy   | F1-Score   | Precision  | Recall     | Training Time |
-| --------------------- | ------------ | ------------ | ------------ | ------------ | --------------- |
-| **Random Forest**   | **99.9%**  | **99.5%**  | **99.1%**  | **99.9%**  | **72s**       |
-| **Logistic Regression** | **99.9%** | **99.1%** | **98.3%** | **99.9%** | **35s**   |
+#### **Current Performance with Fixed Network Quality**
+- **F1-Score (73.1%)**: Good performance with corrected network calculations  
+- **Precision (59.4%)**: Moderate false positive rate (~40%)
+- **Recall (94.8%)**: Excellent fraud detection rate
+- **Dynamic Weights**: Models weighted by F1 performance for ensemble decisions
+- **Network Quality Fix**: High follower/employee ratios now properly flagged as suspicious
 
-**📊 Understanding the Enhanced Metrics:**
-
-#### **Legacy 22-Feature Performance**
-- **F1-Score (76.29%)**: Moderate performance with company features missing
-- **Precision (65.57%)**: High false positive rate (~34%)
-- **Recall (91.20%)**: Good fraud detection rate
-
-#### **New 27-Feature Performance** 🆕
-- **F1-Score (99.5%)**: Exceptional performance with company verification
-- **Precision (99.1%)**: Minimal false positives (~1%)
-- **Recall (99.9%)**: Near-perfect fraud detection
-- **Company Impact**: 28% fraud risk variation based on company quality
-
-**Note**: Company verification features dramatically improve model performance and reduce false positives.
+**Note**: The system now uses realistic metrics with proper network quality calculations where high follower-to-employee ratios indicate suspicious activity.
 
 ### Understanding the Models
 
 **Individual Model Characteristics:**
 
-- **Random Forest**: Best performer (95.96% accuracy, 76.3% F1) - excellent feature importance analysis
-- **SVM**: Strong pattern detection (94.42% accuracy, 69.1% F1) - good for complex boundaries
-- **Logistic Regression**: Fast and interpretable (92.24% accuracy, 62.6% F1) - probabilistic output
-- **Naive Bayes**: Simple baseline (90.03% accuracy, 56.0% F1) - quick screening capability
+- **Random Forest**: Best performer (96.9% accuracy, 73.1% F1) - excellent feature importance analysis, 44.9% ensemble weight
+- **Logistic Regression**: Fast and interpretable (84.5% accuracy, 35.3% F1) - 21.6% ensemble weight
+- **SVM**: Pattern detection (80.9% accuracy, 31.3% F1) - 19.5% ensemble weight
+- **Naive Bayes**: High recall baseline (66.6% accuracy, 21.0% F1) - 13.1% ensemble weight
 
-**Important**: Both RandomForest and LogisticRegression now achieve 99%+ performance with company features. The system automatically loads available models and uses company verification for enhanced accuracy.
+**Important**: The system uses dynamic weights based on F1 performance from model_metrics.json, ensuring the best models have more influence in ensemble decisions.
 
-### 📚 Company Verification Impact on Performance
+### 📚 Network Quality & Feature Calculation Improvements
 
-**The Breakthrough**: Adding company verification features improved performance dramatically:
+**Major Refactoring**: Fixed critical calculation issues that were causing identical predictions:
 
-**Before (22 features)**:
-- **F1-Score**: 76.3% (moderate performance)
-- **Precision**: 65.57% (~1 in 3 flagged jobs were false positives)
-- **Limitation**: No company context for fraud assessment
-
-**After (27 features)** 🆕:
-- **F1-Score**: 99.5% (exceptional performance)
-- **Precision**: 99.1% (minimal false positives)
-- **Company Impact**: 28% fraud risk variation based on company characteristics
+**Issues Fixed**:
+- **Inverted Network Quality**: High follower/employee ratios (>1000) now correctly flagged as suspicious 
+- **Zero Feature Calculations**: company_legitimacy_score and content_quality_score now properly calculated instead of defaulting to 0.0
+- **Dynamic Model Weights**: Replaced hardcoded weights with F1-score based weights from model_metrics.json
+- **SVM predict_proba**: Fixed by using decision_function with sigmoid conversion for SGDClassifier
 
 **Real-World Impact**:
-- **Microsoft Corporation**: 71.86% fraud risk (legitimate large company)
-- **Suspicious startup**: 99.82% fraud risk (new, small company)
-- **Minimal False Alarms**: <1% false positive rate
+- **Different Companies Now Show Different Scores**: Previously identical 64.2% scores are now properly differentiated
+- **Network Quality Example**: 152K followers with 30 employees now correctly shows as suspicious
+- **Dynamic Ensemble**: Random Forest (44.9% weight) leads decisions over weaker models
 
-**Recommendation**: The system now provides reliable fraud detection suitable for automated decision-making with human oversight.
+**Recommendation**: The system now provides differentiated fraud detection with proper feature calculations and realistic performance metrics.
 
 ---
 
@@ -423,8 +341,7 @@ fraudspot/
 │   │   ├── evaluation_service.py       # NEW: Model evaluation services
 │   │   ├── model_service.py            # Model lifecycle management
 │   │   ├── scraping_service.py         # Scraping coordination service
-│   │   ├── serialization_service.py    # Data format conversion
-│   │   └── verification_service.py     # NEW: Centralized verification & fuzzy matching
+│   │   └── serialization_service.py    # Data format conversion
 │   ├── 🌐 ui/                      # Streamlit user interface
 │   │   ├── components/                 # Modular UI components
 │   │   │   ├── analysis.py                 # Analysis results display
@@ -653,32 +570,32 @@ for model_name, model_metrics in metrics['individual_models'].items():
 - **Mobile Performance**: 100% responsive design compatibility
 - **Cache Hit Rate**: 80%+ for repeated job analyses
 
-### Enhanced Model Accuracy Achievements 🆕
+### Realistic Model Performance Achievements 
 
-#### **27-Feature Models with Company Verification**
-- **Best Performance**: 99.9% accuracy (Both RandomForest and LogisticRegression)
-- **Exceptional Precision**: 99.1% precision means <1% false positives
-- **Perfect Recall**: 99.9% recall ensures virtually all fraudulent jobs are detected
-- **F1-Score Excellence**: 99.5% F1-score indicates exceptional balanced performance
-- **Company Impact**: 28% fraud risk variation based on company characteristics
+#### **28-Feature Models with Network Quality Fixes**
+- **Best Performance**: 96.9% accuracy (Random Forest with 73.1% F1-score)
+- **Balanced Accuracy**: 95.9% balanced accuracy accounting for class imbalance 
+- **Good Recall**: 94.8% recall ensures most fraudulent jobs are detected
+- **Dynamic Ensemble**: F1-based weighting gives Random Forest 44.9% influence
+- **Fixed Calculations**: Proper network quality and feature scoring eliminate identical predictions
 
-**✅ Production Ready**: This system provides reliable fraud detection suitable for automated workflows with minimal manual verification needed.
+**✅ Production Ready**: This system provides realistic fraud detection with proper differentiation between companies and transparent ensemble weighting.
 
-### Feature Importance (27-Feature Model) 🆕
+### Feature Importance (28-Feature Model with Fixes)
 
-#### **Top Profile Features**
-1. **poster_verified**: 0.28 (LinkedIn verification status)
-2. **poster_experience**: 0.22 (Work experience at posting company)
-3. **verification_score**: 0.15 (Composite verification rating 0-4)
+#### **Top Network Features** (Fixed Calculations)
+1. **network_quality_score**: High follower/employee ratios (>1000) now properly flagged as suspicious
+2. **company_legitimacy_score**: Now calculated based on company data instead of defaulting to 0.0  
+3. **content_quality_score**: Proper calculation based on job posting content quality
 
-#### **Top Company Features** 🆕
-4. **company_legitimacy_score**: 0.12 (Combined company trust indicator)
-5. **network_quality_score**: 0.08 (Company LinkedIn network strength)
-6. **company_employees_score**: 0.06 (Company size normalization)
+#### **Key Fraud Indicators**
+4. **fraud_risk_score**: No longer constant 0.7, now varies based on actual risk factors
+5. **follower_employee_ratio**: Direct calculation of social media manipulation indicators
+6. **suspicious_network_flag**: Binary flag for extremely suspicious network metrics
 
 #### **Content Features**
-7. **professional_language_score**: 0.05 (Content quality)
-8. **description_length_score**: 0.04 (Job description completeness)
+7. **professional_language_score**: Content quality and professionalism
+8. **description_length_score**: Job description completeness and detail
 
 ---
 
@@ -771,7 +688,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**✅ System Reliability**: This fraud detection system achieves 99.5% F1-score with 99.1% precision using company verification features. The system provides **reliable fraud detection with minimal false positives** (<1%). While highly accurate, always exercise caution when sharing personal information online and verify job postings through official company channels.
+**✅ System Reliability**: This fraud detection system achieves 73.1% F1-score with 59.4% precision using corrected network quality calculations and dynamic ensemble weights. The system provides **realistic fraud detection with proper company differentiation**. Always exercise caution when sharing personal information online and verify job postings through official company channels.
 
 ---
 

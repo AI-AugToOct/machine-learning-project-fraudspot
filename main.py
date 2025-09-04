@@ -15,6 +15,8 @@ import streamlit as st
 # Add src directory to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
+from src.core.app_initializer import get_initialization_status, initialize_fraudspot
+
 # Import configuration and fraud patterns
 from src.core.constants import FraudKeywords
 
@@ -36,6 +38,26 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def initialize_application() -> None:
+    """Initialize all application components using centralized system."""
+    if not st.session_state.get('app_initialized', False):
+        logger.info("🚀 CENTRALIZED INITIALIZATION: Starting FraudSpot...")
+        
+        with st.spinner("Loading ML models and initializing components (this happens only once)..."):
+            # Use centralized initialization system
+            success = initialize_fraudspot()
+            
+            if success:
+                logger.info("✅ CENTRALIZED INITIALIZATION: Success")
+                status = get_initialization_status()
+                logger.info(f"📋 Initialization status: {status}")
+            else:
+                logger.error("❌ CENTRALIZED INITIALIZATION: Failed")
+                st.error("Application initialization failed. Please refresh the page.")
+    else:
+        logger.debug("📌 Using centralized cached components")
 
 
 def setup_page_config() -> None:
@@ -138,8 +160,11 @@ def main() -> None:
     Clean, professional, non-blocking fraud detection system.
     """
     try:
-        # Page configuration
+        # Page configuration MUST come first
         setup_page_config()
+        
+        # Initialize application using centralized system (fixes 4x loading issue)
+        initialize_application()
         
         # Initialize fraud pattern loader
         fraud_loader = initialize_fraud_pattern_loader()

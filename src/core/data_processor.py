@@ -1,9 +1,9 @@
 """
-Data Processor - SINGLE SOURCE OF TRUTH
-This module handles ALL data preprocessing operations.
-Consolidates logic from transformers.py, data_harmonizer.py, and serializers.py
+Data Processor - CONTENT-FOCUSED VERSION
+This module handles data preprocessing for content-focused fraud detection.
+Focuses on job posting content and company metrics, not profile data.
 
-Version: 3.0.0 - DRY Consolidation
+Version: 4.0.0 - Content-Focused Data Processing
 """
 
 import logging
@@ -13,8 +13,9 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import ADASYN, SMOTE, BorderlineSMOTE
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.impute import KNNImputer, SimpleImputer
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 from .constants import DataConstants, FraudKeywords, ModelConstants
@@ -53,6 +54,7 @@ class DataProcessor(BaseEstimator, TransformerMixin):
         # Initialize transformers
         self.label_encoders = {}
         self.scaler = None
+        self.imputer = None
         self.is_fitted = False
         
         logger.info(f"DataProcessor initialized with balance={balance_method}, scaling={scaling_method}")
@@ -76,6 +78,9 @@ class DataProcessor(BaseEstimator, TransformerMixin):
             
             if 'encode' in self.steps:
                 X_processed = self._encode_features(X_processed)
+            
+            # Fit imputer for any remaining NaN values
+            self._fit_imputer(X_processed)
             
             if 'normalize' in self.steps and self.scaling_method != 'none':
                 self._fit_scaler(X_processed)
@@ -109,6 +114,9 @@ class DataProcessor(BaseEstimator, TransformerMixin):
             
             if 'encode' in self.steps:
                 X_processed = self._encode_features(X_processed)
+            
+            # Apply imputation for any remaining NaN values
+            X_processed = self._impute_features(X_processed)
             
             if 'normalize' in self.steps and self.scaling_method != 'none':
                 X_processed = self._scale_features(X_processed)
@@ -204,17 +212,21 @@ class DataProcessor(BaseEstimator, TransformerMixin):
             # Fill missing values based on column type
             for col in df_filled.columns:
                 if df_filled[col].dtype == 'object':
-                    # Text columns
+                    # Text columns - fill with empty string
                     df_filled[col] = df_filled[col].fillna('')
                 elif df_filled[col].dtype in ['int64', 'float64']:
                     # Numeric columns
                     if col.endswith('_count') or col.endswith('_score'):
+                        # Count and score columns - fill with 0
                         df_filled[col] = df_filled[col].fillna(0)
                     else:
-                        df_filled[col] = df_filled[col].fillna(df_filled[col].median())
+                        # Other numeric columns - fill with median or 0 if median unavailable
+                        median_val = df_filled[col].median()
+                        fill_val = median_val if not pd.isna(median_val) else 0
+                        df_filled[col] = df_filled[col].fillna(fill_val)
                 else:
-                    # Boolean or other types
-                    df_filled[col] = df_filled[col].fillna(0)
+                    # Boolean or other types - fill with False/0
+                    df_filled[col] = df_filled[col].fillna(False)
             
             return df_filled
             
@@ -231,7 +243,9 @@ class DataProcessor(BaseEstimator, TransformerMixin):
             numeric_cols = ['telecommuting', 'has_company_logo', 'has_questions', 'employment_type']
             for col in numeric_cols:
                 if col in df_typed.columns:
-                    df_typed[col] = pd.to_numeric(df_typed[col], errors='coerce').fillna(0).astype(int)
+                    # Convert to numeric and fill NaN with 0 before int conversion
+                    df_typed[col] = pd.to_numeric(df_typed[col], errors='coerce')
+                    df_typed[col] = df_typed[col].fillna(0).astype(int)
             
             # Convert boolean-like columns
             bool_cols = ['fraudulent']
@@ -269,7 +283,8 @@ class DataProcessor(BaseEstimator, TransformerMixin):
                 self.label_encoders[col_name] = LabelEncoder()
             
             # Handle missing values
-            series_filled = series.fillna('Unknown')
+            # NO DEFAULTS: Keep original values including NaN
+            series_filled = series  # No fillna
             
             def safe_encode(value):
                 try:
@@ -287,7 +302,8 @@ class DataProcessor(BaseEstimator, TransformerMixin):
                 
         except Exception as e:
             logger.error(f"Error encoding column {col_name}: {str(e)}")
-            return series.fillna(0)
+            # NO DEFAULTS: Keep NaN values for model to handle
+            return series  # No fillna
     
     def _normalize_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Normalize numeric features."""
@@ -349,6 +365,53 @@ class DataProcessor(BaseEstimator, TransformerMixin):
             logger.error(f"Error scaling features: {str(e)}")
             return df
     
+    def _fit_imputer(self, df: pd.DataFrame):
+        """Fit imputer for handling NaN values."""
+        try:
+            # Get numeric columns
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            
+            if not numeric_cols:
+                logger.info("No numeric columns found for imputation")
+                return
+            
+            # Use median imputation for numeric data (per our plan)
+            self.imputer = SimpleImputer(strategy='median')
+            # Suppress numpy warnings about empty slices when computing median
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=RuntimeWarning, 
+                                      message='Mean of empty slice')
+                self.imputer.fit(df[numeric_cols])
+            logger.info(f"Fitted imputer on {len(numeric_cols)} numeric columns")
+            
+        except Exception as e:
+            logger.error(f"Error fitting imputer: {str(e)}")
+    
+    def _impute_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Impute missing values using fitted imputer."""
+        try:
+            if not self.imputer:
+                return df
+            
+            df_imputed = df.copy()
+            numeric_cols = df_imputed.select_dtypes(include=[np.number]).columns.tolist()
+            
+            if numeric_cols:
+                # Suppress numpy warnings about empty slices when computing median
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=RuntimeWarning, 
+                                          message='Mean of empty slice')
+                    df_imputed[numeric_cols] = self.imputer.transform(df_imputed[numeric_cols])
+                logger.info(f"Imputed NaN values in {len(numeric_cols)} numeric columns")
+            
+            return df_imputed
+            
+        except Exception as e:
+            logger.error(f"Error imputing features: {str(e)}")
+            return df
+    
     def balance_classes(self, X: pd.DataFrame, y: pd.Series) -> tuple:
         """Balance classes in the dataset."""
         try:
@@ -402,6 +465,258 @@ class DataProcessor(BaseEstimator, TransformerMixin):
             
         except Exception as e:
             logger.error(f"Error in random oversampling: {str(e)}")
+            return X, y
+    
+    def clean_and_enhance_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        ENHANCED data cleaning with intelligent preprocessing.
+        Implements Phase 1 of the Model Enhancement Plan.
+        
+        Args:
+            df: Raw DataFrame with job posting data
+            
+        Returns:
+            pd.DataFrame: Cleaned and enhanced DataFrame
+        """
+        logger.info("🧹 Starting enhanced data cleaning pipeline")
+        
+        try:
+            df_clean = df.copy()
+            
+            # Step 1: Drop unnecessary columns (based on analysis)
+            columns_to_drop = ['salary_range', 'job_id']  # salary_range: 84% missing, not used in Arabic
+            existing_drops = [col for col in columns_to_drop if col in df_clean.columns]
+            if existing_drops:
+                df_clean = df_clean.drop(columns=existing_drops)
+                logger.info(f"📉 Dropped columns: {existing_drops}")
+            
+            # Step 2: Create missing indicator features BEFORE filling
+            missing_indicators = self._create_missing_indicators(df_clean)
+            df_clean = pd.concat([df_clean, missing_indicators], axis=1)
+            
+            # Step 3: Apply intelligent imputation
+            df_clean = self._apply_intelligent_imputation(df_clean)
+            
+            # Step 4: Create data quality features
+            df_clean = self._create_quality_features(df_clean)
+            
+            logger.info(f"✅ Data cleaning complete. Shape: {df_clean.shape}")
+            return df_clean
+            
+        except Exception as e:
+            logger.error(f"Error in enhanced data cleaning: {str(e)}")
+            raise
+    
+    def _create_missing_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Create binary indicators for missing values in key columns."""
+        indicators = pd.DataFrame(index=df.index)
+        
+        # Key columns that indicate fraud when missing
+        key_columns = ['company_profile', 'requirements', 'benefits', 
+                      'required_experience', 'required_education', 'function']
+        
+        for col in key_columns:
+            if col in df.columns:
+                indicators[f'missing_{col}'] = df[col].isna().astype(int)
+        
+        # Count total missing fields
+        indicators['total_missing_count'] = indicators.sum(axis=1)
+        
+        logger.info(f"📊 Created {len(indicators.columns)} missing indicator features")
+        return indicators
+    
+    def _apply_intelligent_imputation(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply domain-knowledge based imputation strategies."""
+        df_imputed = df.copy()
+        
+        # Department: Infer from job title
+        if 'department' in df.columns:
+            df_imputed['department'] = self._impute_department(df_imputed)
+        
+        # Required education: Based on job level
+        if 'required_education' in df.columns:
+            df_imputed['required_education'] = self._impute_education(df_imputed)
+        
+        # Benefits: Generate standard packages
+        if 'benefits' in df.columns:
+            df_imputed['benefits'] = self._impute_benefits(df_imputed)
+        
+        # Required experience: From title seniority
+        if 'required_experience' in df.columns:
+            df_imputed['required_experience'] = self._impute_experience(df_imputed)
+        
+        # Function: Map from title keywords
+        if 'function' in df.columns:
+            df_imputed['function'] = self._impute_function(df_imputed)
+        
+        logger.info("🔧 Applied intelligent imputation to all columns")
+        return df_imputed
+    
+    def _impute_department(self, df: pd.DataFrame) -> pd.Series:
+        """Impute department based on job title keywords."""
+        department_map = {
+            'engineer|developer|programmer|software': 'Engineering',
+            'sales|account|business development': 'Sales',
+            'marketing|digital|social media': 'Marketing',
+            'hr|human resources|recruiter': 'Human Resources',
+            'finance|accounting|financial': 'Finance',
+            'design|ui|ux|graphic': 'Design',
+            'manager|director|executive': 'Management',
+            'analyst|data|research': 'Analytics'
+        }
+        
+        department = df['department'].copy()
+        title = df['title'].fillna('').str.lower()
+        
+        for pattern, dept in department_map.items():
+            mask = department.isna() & title.str.contains(pattern, na=False)
+            department.loc[mask] = dept
+        
+        # Fill remaining with 'General'
+        department.fillna('General', inplace=True)
+        return department
+    
+    def _impute_education(self, df: pd.DataFrame) -> pd.Series:
+        """Impute education requirements based on job seniority."""
+        education = df['required_education'].copy()
+        title = df['title'].fillna('').str.lower()
+        
+        # Senior/Lead positions
+        mask = education.isna() & title.str.contains('senior|lead|principal|architect', na=False)
+        education.loc[mask] = "Bachelor's or Master's degree"
+        
+        # Management positions
+        mask = education.isna() & title.str.contains('manager|director|vp|head', na=False)
+        education.loc[mask] = "Master's degree preferred"
+        
+        # Entry level
+        mask = education.isna() & title.str.contains('junior|entry|intern|trainee', na=False)
+        education.loc[mask] = "Bachelor's degree"
+        
+        # Fill remaining
+        education.fillna("Bachelor's degree or equivalent experience", inplace=True)
+        return education
+    
+    def _impute_benefits(self, df: pd.DataFrame) -> pd.Series:
+        """Generate realistic benefits packages."""
+        benefits = df['benefits'].copy()
+        
+        benefit_templates = [
+            "Health insurance, paid time off, professional development opportunities",
+            "Competitive salary, medical benefits, flexible working hours",
+            "Health coverage, annual leave, training and development programs",
+            "Medical insurance, vacation days, career advancement opportunities",
+            "Healthcare benefits, PTO, skill development programs"
+        ]
+        
+        # Randomly assign templates to missing benefits
+        mask = benefits.isna()
+        import random
+        for idx in benefits[mask].index:
+            benefits.loc[idx] = random.choice(benefit_templates)
+        
+        return benefits
+    
+    def _impute_experience(self, df: pd.DataFrame) -> pd.Series:
+        """Impute experience requirements from title."""
+        experience = df['required_experience'].copy()
+        title = df['title'].fillna('').str.lower()
+        
+        # Experience mapping
+        exp_map = {
+            'entry|junior|trainee|intern': "0-2 years",
+            'mid|intermediate': "2-5 years", 
+            'senior': "5+ years",
+            'lead|principal': "7+ years",
+            'manager|director': "8+ years",
+            'vp|head|chief': "10+ years"
+        }
+        
+        for pattern, exp in exp_map.items():
+            mask = experience.isna() & title.str.contains(pattern, na=False)
+            experience.loc[mask] = exp
+        
+        experience.fillna("2-5 years", inplace=True)
+        return experience
+    
+    def _impute_function(self, df: pd.DataFrame) -> pd.Series:
+        """Impute function from job title keywords."""
+        function = df['function'].copy()
+        title = df['title'].fillna('').str.lower()
+        
+        function_map = {
+            'engineer|developer|programmer|tech|software|it': 'Information Technology',
+            'sales|account|business': 'Sales',
+            'marketing|digital|social': 'Marketing', 
+            'finance|accounting|financial': 'Finance',
+            'hr|human resources': 'Human Resources',
+            'design|ui|ux|creative': 'Design',
+            'operations|logistics|supply': 'Operations',
+            'customer|support|service': 'Customer Service'
+        }
+        
+        for pattern, func in function_map.items():
+            mask = function.isna() & title.str.contains(pattern, na=False)
+            function.loc[mask] = func
+        
+        function.fillna('General', inplace=True)
+        return function
+    
+    def _create_quality_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Create data completeness and quality features."""
+        df_enhanced = df.copy()
+        
+        # Information completeness score
+        total_cols = len(df.columns)
+        df_enhanced['info_completeness'] = df.notna().sum(axis=1) / total_cols
+        
+        # Company legitimacy indicators  
+        df_enhanced['has_company_logo'] = df.get('has_company_logo', 0)
+        df_enhanced['has_company_profile'] = (~df['company_profile'].isna()).astype(int)
+        df_enhanced['has_requirements'] = (~df['requirements'].isna()).astype(int)
+        df_enhanced['has_benefits'] = (~df['benefits'].isna()).astype(int)
+        df_enhanced['has_questions'] = df.get('has_questions', 0)
+        
+        logger.info("📈 Created data quality features")
+        return df_enhanced
+    
+    def balance_classes_enhanced(self, X: pd.DataFrame, y: pd.Series) -> tuple:
+        """
+        ENHANCED class balancing with better SMOTE implementation.
+        Uses BorderlineSMOTE for more realistic synthetic samples.
+        """
+        try:
+            if self.balance_method == 'none':
+                return X, y
+            elif self.balance_method == 'smote':
+                # Use BorderlineSMOTE for better quality synthetic samples
+                smote = BorderlineSMOTE(
+                    sampling_strategy=0.2,  # 1:5 ratio, not 1:1
+                    random_state=42,
+                    k_neighbors=3,
+                    kind='borderline-1'
+                )
+                logger.info("🔄 Using BorderlineSMOTE with 1:5 ratio for better balance")
+                X_balanced, y_balanced = smote.fit_resample(X, y)
+                
+                # Add small amount of noise to prevent overfitting
+                noise = np.random.normal(0, 0.01, X_balanced.shape)
+                X_balanced_noisy = X_balanced + noise
+                
+                logger.info(f"⚖️  Class balancing: {len(X)} → {len(X_balanced)} samples")
+                return pd.DataFrame(X_balanced_noisy, columns=X.columns), pd.Series(y_balanced)
+                
+            elif self.balance_method == 'adasyn':
+                # Alternative: ADASYN for adaptive synthetic samples
+                adasyn = ADASYN(sampling_strategy=0.2, random_state=42)
+                X_balanced, y_balanced = adasyn.fit_resample(X, y)
+                return pd.DataFrame(X_balanced, columns=X.columns), pd.Series(y_balanced)
+                
+            else:
+                return self.balance_classes(X, y)  # Fall back to original
+                
+        except Exception as e:
+            logger.error(f"Error in enhanced class balancing: {str(e)}")
             return X, y
     
     def validate_dataframe(self, df: pd.DataFrame, required_columns: List[str] = None,
@@ -537,54 +852,52 @@ def prepare_scraped_data_for_ml(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         else:
             ml_data['company'] = str(company_raw) if company_raw else 'Unknown'
         
-        # Extract poster information and verification features
-        # Check multiple locations where poster data might be stored
-        company_name = ml_data['company']
-        poster_raw = None
+        # Company metrics from enriched scraping - preserve None/NaN for ML-first approach
+        ml_data['company_followers'] = raw_data.get('company_followers')
+        ml_data['company_employees'] = raw_data.get('company_employees')
+        ml_data['company_founded'] = raw_data.get('company_founded')
+        ml_data['company_size'] = raw_data.get('company_size')
         
-        # Option 1: Nested poster dict (expected by old code)
-        if 'poster' in raw_data and isinstance(raw_data['poster'], dict):
-            poster_raw = raw_data['poster']
+        # Company score fields - preserve None/NaN
+        ml_data['company_followers_score'] = raw_data.get('company_followers_score')
+        ml_data['company_employees_score'] = raw_data.get('company_employees_score')
+        ml_data['company_founded_score'] = raw_data.get('company_founded_score')
         
-        # Option 2: Bright Data puts profile data at root level
-        elif any(key in raw_data for key in ['avatar', 'connections', 'current_company', 'experience']):
-            poster_raw = raw_data  # Use entire raw_data as poster data
+        # Content quality metrics from enrichment
+        ml_data['content_quality_score'] = raw_data.get('content_quality_score', 0.0)
+        ml_data['professional_language_score'] = raw_data.get('professional_language_score', 0.0)
+        ml_data['urgency_language_score'] = raw_data.get('urgency_language_score', 0.0)
         
-        # Option 3: Pre-extracted verification fields at root level
-        elif all(key in raw_data for key in ['poster_verified', 'poster_photo', 'poster_experience', 'poster_active']):
-            # Already processed by scraper, use directly
-            ml_data.update({
-                'poster_verified': int(raw_data.get('poster_verified', 0)),
-                'poster_photo': int(raw_data.get('poster_photo', 0)),
-                'poster_experience': int(raw_data.get('poster_experience', 0)),
-                'poster_active': int(raw_data.get('poster_active', 0))
-            })
-            logger.info("Using pre-extracted verification fields from scraper")
+        # Contact risk metrics
+        ml_data['contact_risk_score'] = raw_data.get('contact_risk_score', 0.0)
+        ml_data['has_whatsapp'] = raw_data.get('has_whatsapp', 0)
+        ml_data['has_telegram'] = raw_data.get('has_telegram', 0)
+        ml_data['has_professional_email'] = raw_data.get('has_professional_email', 0)
         
-        # Extract features if we found poster data
-        if poster_raw:
-            verification_features = _extract_verification_features(poster_raw, company_name)
-            ml_data.update(verification_features)
-            logger.info(f"Extracted verification features: {verification_features}")
-        elif 'poster_verified' not in ml_data:
-            # Default verification features only if not already set
-            ml_data.update({
-                'poster_verified': 0,
-                'poster_photo': 0,
-                'poster_experience': 0,
-                'poster_active': 0
-            })
-            logger.warning("No poster data found, using default verification features")
+        # Company enrichment flags
+        ml_data['company_enrichment_success'] = raw_data.get('company_enrichment_success', False)
+        ml_data['profile_enrichment_success'] = raw_data.get('profile_enrichment_success', False)
         
-        # Calculate poster_score using VerificationService (centralized logic)
-        from ..services.verification_service import VerificationService
-        verification_service = VerificationService()
-        ml_data['poster_score'] = verification_service.calculate_verification_score(ml_data)
+        # Text analysis features
+        ml_data['suspicious_keywords_count'] = raw_data.get('suspicious_keywords_count', 0)
+        ml_data['arabic_suspicious_score'] = raw_data.get('arabic_suspicious_score', 0.0)
+        ml_data['english_suspicious_score'] = raw_data.get('english_suspicious_score', 0.0)
+        
+        # Job structure features
+        ml_data['has_salary_info'] = raw_data.get('has_salary_info', 0)
+        ml_data['has_requirements'] = raw_data.get('has_requirements', 0)
+        ml_data['has_location'] = raw_data.get('has_location', 0)
+        ml_data['has_experience_level'] = raw_data.get('has_experience_level', 0)
+        
+        # Fraud risk score (composite)
+        ml_data['fraud_risk_score'] = raw_data.get('fraud_risk_score', 0.0)
+        
+        logger.info("✅ Content-focused data processing completed")
         
         # Set default fraudulent label
         ml_data['fraudulent'] = raw_data.get('fraudulent', 0)
         
-        logger.info(f"Prepared ML data with {len(ml_data)} features")
+        logger.info(f"✅ Prepared content-focused ML data with {len(ml_data)} features")
         return ml_data
         
     except Exception as e:
@@ -592,93 +905,6 @@ def prepare_scraped_data_for_ml(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
 
-def _extract_verification_features(poster: Dict[str, Any], company_name: str) -> Dict[str, int]:
-    """
-    Extract verification features from ACTUAL Bright Data profile response.
-    
-    Based on real API structure from person.json, NOT fictional fields.
-    LinkedIn doesn't provide 'is_verified' - we infer from profile quality indicators.
-    """
-    verification_features = {}
-    
-    # 1. POSTER_VERIFIED: Profile completeness and credibility check
-    # LinkedIn doesn't provide "is_verified" field - we infer from profile quality
-    connections = poster.get('connections', 0)
-    experience_count = len(poster.get('experience', []))
-    education_count = len(poster.get('education', []))
-    recommendations = poster.get('recommendations_count', 0)
-    followers = poster.get('followers', 0)
-    
-    # Trust Indicator based verification (align with UI Trust Indicators 5/5)
-    # poster_verified = Has recommendations OR awards (credibility indicators)
-    honors_and_awards = poster.get('honors_and_awards', [])
-    has_awards = len(honors_and_awards) > 0 if isinstance(honors_and_awards, list) else False
-    
-    verification_features['poster_verified'] = 1 if (
-        recommendations > 0 or has_awards  # Has recommendations OR awards (Trust Indicators)
-    ) else 0
-    
-    # 2. POSTER_PHOTO: Check avatar field (Bright Data uses 'avatar', not 'profile_photo_url')
-    verification_features['poster_photo'] = 1 if (
-        poster.get('avatar') and  # Has profile picture URL
-        not poster.get('default_avatar', False)  # Not using LinkedIn's default avatar
-    ) else 0
-    
-    # 3. POSTER_EXPERIENCE: Match current company with job posting company
-    # First check if UI has already determined "SAME COMPANY" status
-    has_company_experience = False
-    
-    # Check if poster is currently at the job posting company (most direct indicator)
-    current_company = poster.get('current_company', {})
-    if isinstance(current_company, dict):
-        current_company_name = current_company.get('name', '')
-        if current_company_name and company_name:
-            # Use verification service for smart fuzzy matching
-            from ..services.verification_service import VerificationService
-            verification_service = VerificationService()
-            if verification_service.company_matches(company_name, current_company_name):
-                has_company_experience = True
-                logger.info(f"✅ SAME COMPANY: '{company_name}' matches current company '{current_company_name}'")
-    
-    # Also check full experience history for company match
-    if not has_company_experience and company_name:
-        from ..services.verification_service import VerificationService
-        verification_service = VerificationService()
-        for exp in poster.get('experience', []):
-            if isinstance(exp, dict):
-                exp_company = exp.get('company', '')
-                if exp_company and verification_service.company_matches(company_name, exp_company):
-                    has_company_experience = True
-                    logger.info(f"✅ SAME COMPANY: '{company_name}' matches experience company '{exp_company}'")
-                    break
-    
-    # Additional check: if poster's job title includes "recruiter" or "consultant" at similar company
-    poster_title = poster.get('headline', '').lower()
-    if not has_company_experience and 'recruiter' in poster_title or 'consultant' in poster_title:
-        if company_name and company_name.lower() in poster_title:
-            has_company_experience = True
-            logger.info(f"✅ SAME COMPANY: Recruiter/consultant at '{company_name}' detected")
-    
-    verification_features['poster_experience'] = 1 if has_company_experience else 0
-    
-    # 4. POSTER_ACTIVE: Check activity and engagement (Bright Data provides 'activity' array)
-    activity_count = len(poster.get('activity', []))
-    
-    verification_features['poster_active'] = 1 if (
-        activity_count > 0 or  # Has recent LinkedIn activity (likes, posts, comments)
-        followers > 100 or  # Has meaningful following (indicates engagement)
-        connections >= 500  # Very active networker
-    ) else 0
-    
-    logger.info(f"Verification extraction: verified={verification_features['poster_verified']}, "
-                f"photo={verification_features['poster_photo']}, "
-                f"experience={verification_features['poster_experience']}, "
-                f"active={verification_features['poster_active']}")
-    
-    return verification_features
-
-
-# Note: _companies_match function replaced by VerificationService.company_matches()
 
 
 # Export main classes and functions

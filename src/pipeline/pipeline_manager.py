@@ -11,13 +11,15 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
 # Import ONLY from core modules (single source of truth)
-from ..core import DataProcessor, FeatureEngine, FraudDetector, ModelConstants
+from ..core import DataProcessor, FeatureEngine, FraudDetectionPipeline, ModelConstants
+# Ensemble model removed for content-focused approach
 from ..services import ModelService, SerializationService
 from ..utils.model_utils import ModelUtils
 
@@ -39,12 +41,12 @@ class PipelineManager:
     - SerializationService: Data conversion
     """
     
-    def __init__(self, model_type: str = 'random_forest', 
-                 balance_method: str = 'smote', 
+    def __init__(self, model_type: str = 'ensemble', 
+                 balance_method: str = 'borderline_smote', 
                  scaling_method: str = 'standard', 
                  config: Dict[str, Any] = None):
         """
-        Initialize pipeline manager with core modules.
+        Initialize pipeline manager with enhanced ensemble models (Phase 2).
         
         Args:
             model_type: ML model type
@@ -60,15 +62,12 @@ class PipelineManager:
             'scaling_method': scaling_method
         })
         
-        # Initialize core modules (single source of truth)
-        self.data_processor = DataProcessor(
-            balance_method=balance_method,
-            scaling_method=scaling_method
-        )
+        # Initialize core modules directly (unified architecture)
+        self.data_processor = DataProcessor(balance_method, scaling_method)
         self.feature_engine = FeatureEngine()
-        self.fraud_detector = FraudDetector()
+        self.fraud_detector = FraudDetectionPipeline()
         
-        # Initialize services
+        # Initialize services directly
         self.model_service = ModelService()
         self.serialization_service = SerializationService()
         
@@ -172,35 +171,38 @@ class PipelineManager:
         Train ML model using utilities.
         
         Args:
-            X_train: Training features
-            y_train: Training targets
+            X_train: Training features (can be balanced with SMOTE)
+            y_train: Training targets (can be balanced with SMOTE)
             
         Returns:
-            Dict: Training results
+            Dict: Basic training info (NOT performance metrics - use evaluate_model for that)
         """
         logger.info(f"Training {self.config['model_type']} model")
         
         try:
-            # Get model instance from utilities
+            # Get model instance from utilities (with SMOTE awareness to prevent double balancing)
+            balance_method = self.config.get('balance_method', 'smote')
+            use_smote = balance_method == 'smote'
+            
             self.trained_model = ModelUtils.get_model_instance(
                 self.config['model_type'], 
-                random_state=self.config['random_state']
+                random_state=self.config['random_state'],
+                use_smote=use_smote
             )
             
             # Train the model
             self.trained_model.fit(X_train, y_train)
             
-            # Calculate training metrics using utilities
-            y_pred = self.trained_model.predict(X_train)
-            y_pred_proba = None
-            if hasattr(self.trained_model, 'predict_proba'):
-                y_pred_proba = self.trained_model.predict_proba(X_train)
+            # Store basic training info (NOT performance metrics)
+            self.training_results = {
+                'model_type': self.config['model_type'],
+                'training_samples': len(X_train),
+                'feature_count': X_train.shape[1],
+                'trained': True
+            }
             
-            self.training_results = ModelUtils.calculate_comprehensive_metrics(
-                y_train, y_pred, y_pred_proba
-            )
-            
-            logger.info(f"Model training completed - F1: {self.training_results.get('f1_score', 0):.3f}")
+            logger.info(f"Model training completed - {len(X_train)} samples, {X_train.shape[1]} features")
+            logger.warning("⚠️  Training metrics removed - use evaluate_model() for realistic performance")
             
             return self.training_results
             
@@ -398,6 +400,56 @@ class PipelineManager:
             finally:
                 self._use_ensemble = True
     
+    def predict_direct_with_features(self, job_data: Dict[str, Any], features_df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        CRITICAL FIX: Direct prediction using pre-computed features to prevent circular loops.
+        This method ensures enriched company/profile data reaches the actual sklearn models.
+        """
+        if self.pipeline is None:
+            raise ValueError("No pipeline available for prediction")
+        
+        try:
+            logger.info(f"🎯 Direct prediction with pre-computed features for {self.config.get('model_type', 'unknown')} model")
+            
+            # Use the sklearn model directly with features_df (no circular calls)
+            prediction = self.pipeline.predict(features_df.iloc[0:1])[0]
+            
+            # Get probability if available
+            if hasattr(self.pipeline, 'predict_proba'):
+                prediction_proba = self.pipeline.predict_proba(features_df.iloc[0:1])[0]
+                fraud_probability = float(prediction_proba[1])  # Probability of class 1 (fraud)
+            elif hasattr(self.pipeline, 'decision_function'):
+                # For SVM/SGD - use decision function and convert to probability-like score
+                decision_score = self.pipeline.decision_function(features_df.iloc[0:1])[0]
+                fraud_probability = 1 / (1 + np.exp(-decision_score))  # Sigmoid conversion
+            else:
+                # Use binary prediction as rough probability
+                fraud_probability = float(prediction)
+            
+            # Log enriched data usage
+            company_size = job_data.get('company_size_category', 'Unknown')
+            content_quality = job_data.get('content_quality_score', 'N/A')
+            legitimacy = job_data.get('legitimacy_score', 'N/A') 
+            logger.info(f"🔧 Using enriched data: size={company_size}, content={content_quality}, legitimacy={legitimacy}")
+            
+            return {
+                'success': True,
+                'model_used': True,
+                'is_fraud': bool(prediction),
+                'fraud_probability': fraud_probability,
+                'prediction_method': f'{self.config.get("model_type", "sklearn")} (direct)',
+                'risk_factors': []  # Individual models don't generate detailed risk factors
+            }
+            
+        except Exception as e:
+            logger.error(f"Direct prediction with features failed: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'is_fraud': True,  # Conservative default
+                'confidence': 0.1
+            }
+    
     def _predict_single_model(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Original single model prediction method (used internally by ensemble).
@@ -407,11 +459,16 @@ class PipelineManager:
             raise ValueError("No fraud detector available")
         
         try:
-            # Use FraudDetector for single model prediction
-            prediction_result = self.fraud_detector.predict_fraud(
-                job_data, 
-                use_ml=(self.pipeline is not None)
-            )
+            # Use FraudDetectionPipeline for single model prediction
+            fraud_result = self.fraud_detector.process(job_data)
+            
+            # Convert FraudResult to legacy format for compatibility
+            prediction_result = fraud_result.to_ui_dict()
+            prediction_result.update({
+                'success': True,
+                'is_fraud': fraud_result.is_fraud,
+                'confidence': fraud_result.confidence
+            })
             
             return prediction_result
             

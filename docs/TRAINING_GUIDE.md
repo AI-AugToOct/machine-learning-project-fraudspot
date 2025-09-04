@@ -1,8 +1,8 @@
 # 🤖 FraudSpot Model Training Guide v3.0.0
 
-**Comprehensive training guide for FraudSpot v3.0.0 with Ensemble ML System**
+**Comprehensive training guide for FraudSpot v3.0.0 with Dynamic Weight ML System**
 
-Train a powerful 4-model ensemble fraud detection system that combines Random Forest, SVM, Logistic Regression, and Naive Bayes models with weighted voting to achieve 97.2% accuracy on multilingual job fraud detection.
+Train a powerful 4-model ensemble fraud detection system with dynamic F1-based weighting that achieves 73.1% F1-score (Random Forest best performer) using FraudDetectionPipeline on corrected network quality features.
 
 ---
 

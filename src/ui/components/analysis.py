@@ -1,13 +1,13 @@
 """
-Analysis Component - REFACTORED FOR DRY CONSOLIDATION
-This module handles fraud analysis results display ONLY.
-ALL fraud calculation logic has been moved to FraudDetector core module.
+Analysis Component - CONTENT-FOCUSED VERSION
+This module handles fraud analysis results display for content-focused fraud detection.
+Focuses on job posting content and company metrics, not profile data.
 
-Version: 3.0.0 - DRY Consolidation
-- Results visualization
-- Detailed analysis breakdown
-- Job poster analysis
-- Enhanced job details display
+Version: 4.0.0 - Content-Focused Analysis
+- Content quality analysis
+- Company legitimacy analysis  
+- Contact risk assessment
+- Job structure analysis
 """
 
 import logging
@@ -29,13 +29,9 @@ from src.ui.utils.streamlit_html import render_html_card, render_metric_card
 logger = logging.getLogger(__name__)
 
 
-# REMOVED: calculate_basic_fraud_score function - ALL fraud calculation logic moved to FraudDetector core module
-# Any component needing fraud scoring should use FraudDetector.predict_fraud() instead
-
-
 def render_results(result: Dict[str, Any]) -> None:
     """
-    Render the analysis results in an organized format with verification features.
+    Render the analysis results in an organized format focusing on content analysis.
     
     Args:
         result (Dict[str, Any]): Complete analysis results including
@@ -51,26 +47,33 @@ def render_results(result: Dict[str, Any]) -> None:
     is_fraud = prediction.get('is_fraud', False)
     confidence = prediction.get('confidence', 0.0)
     risk_level = prediction.get('risk_level', 'Unknown')
-    poster_score = prediction.get('poster_score', 0)
     language = prediction.get('language', 'Unknown')
     
-    # PROMINENT: Display verification analysis first (Perfect Predictor)
-    st.markdown("### 🏆 Verification Analysis (Primary Fraud Indicator)")
+    # PROMINENT: Display content quality analysis first
+    st.markdown("### 📝 Content Quality Analysis (Primary Fraud Indicator)")
     
     col_v1, col_v2, col_v3 = st.columns(3)
     
     with col_v1:
-        # Get verification display info from FraudDetector (single source of truth)
-        from src.core.fraud_detector import FraudDetector
-        fraud_detector = FraudDetector()
-        verify_info = fraud_detector.get_verification_display_info(poster_score)
+        # Get content quality score from prediction
+        content_score = prediction.get('content_quality_score', 0.0)
         
+        # Determine color and status based on content quality
+        if content_score >= 0.8:
+            color, emoji, status, message = "#4CAF50", "✅", "HIGH QUALITY", "Professional content detected"
+        elif content_score >= 0.6:
+            color, emoji, status, message = "#FF9800", "⚠️", "MODERATE QUALITY", "Some quality indicators"
+        elif content_score >= 0.4:
+            color, emoji, status, message = "#FF5722", "⚡", "LOW QUALITY", "Limited quality indicators"
+        else:
+            color, emoji, status, message = "#F44336", "❌", "POOR QUALITY", "Poor content quality detected"
+            
         st.markdown(f"""
-        <div style="background: {verify_info['color']}15; border-left: 5px solid {verify_info['color']}; 
+        <div style="background: {color}15; border-left: 5px solid {color}; 
                     padding: 15px; border-radius: 5px; text-align: center;">
-            <h2 style="color: {verify_info['color']}; margin: 0; font-size: 2.5rem;">{verify_info['emoji']}</h2>
-            <h4 style="color: {verify_info['color']}; margin: 5px 0;">{verify_info['status']}</h4>
-            <p style="margin: 5px 0;"><strong>{verify_info['message']}</strong></p>
+            <h2 style="color: {color}; margin: 0; font-size: 2.5rem;">{emoji}</h2>
+            <h4 style="color: {color}; margin: 5px 0;">{status}</h4>
+            <p style="margin: 5px 0;"><strong>{message}</strong></p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -154,36 +157,48 @@ def render_detailed_analysis(result: Dict[str, Any]) -> None:
     explanation = result.get('explanation', {})
     job_data = result.get('job_data', {})
     
-    # Create tabs for different analysis aspects with verification emphasis
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "🏆 Verification Analysis", "🚩 Red Flags", "✅ Positive Indicators", 
-        "👤 Job Poster Analysis", "📈 Feature Analysis", "📄 Job Details"
+    # Create tabs for different analysis aspects with content focus
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📝 Content Analysis", "🚩 Red Flags", "✅ Positive Indicators", 
+        "📈 Feature Analysis", "📄 Job Details"
     ])
     
     with tab1:
-        # Verification Analysis (Most Important)
-        st.markdown("#### 🏆 Verification Feature Analysis (Primary Fraud Indicator)")
+        # Content Quality Analysis (Most Important)
+        st.markdown("#### 📝 Content Quality Analysis (Primary Fraud Indicator)")
         prediction = result.get('prediction', {})
-        poster_score = prediction.get('poster_score', 0)
         
-        # Use centralized verification service
-        from ...services.verification_service import VerificationService
-        verification_service = VerificationService()
+        # Get content-focused scores
+        content_quality = prediction.get('content_quality_score', 0.0)
+        company_legitimacy = prediction.get('company_legitimacy_score', 0.0)
+        contact_risk = prediction.get('contact_risk_score', 0.0)
         
-        st.markdown(f"**Total Verification Score: {poster_score}/4**")
+        st.markdown(f"**Content Quality Score: {content_quality:.2f}/1.0**")
+        st.markdown(f"**Company Legitimacy Score: {company_legitimacy:.2f}/1.0**")
+        st.markdown(f"**Contact Risk Score: {contact_risk:.2f}/1.0**")
         
-        # Get verification breakdown from service
-        verification_details = verification_service.get_verification_breakdown(job_data)
+        # Create content quality breakdown
+        content_details = [
+            ("Professional Language", prediction.get('professional_language_score', 0.0), "💼"),
+            ("Complete Job Description", prediction.get('description_length_score', 0.0), "📄"), 
+            ("Proper Job Structure", prediction.get('has_requirements', 0), "📋"),
+            ("Company Information", prediction.get('has_company_website', 0), "🏢")
+        ]
         
-        for detail_name, value, emoji in verification_details:
-            color = "green" if value else "red"
-            st.markdown(f"- {emoji} **{detail_name}**: {'Yes' if value else 'No'}")
+        for detail_name, value, emoji in content_details:
+            if isinstance(value, float):
+                display_value = f"{value:.2f}"
+                color = "green" if value >= 0.6 else "orange" if value >= 0.3 else "red"
+            else:
+                display_value = "Yes" if value else "No"
+                color = "green" if value else "red"
+            st.markdown(f"- {emoji} **{detail_name}**: {display_value}")
         
-        # Statistical context (using centralized logic)
-        if poster_score >= 2:
-            st.success(f"📊 **Statistical Analysis**: {verify_info['statistical_message']}")
+        # Statistical context for content quality
+        if content_quality >= 0.6:
+            st.success("📊 **Analysis**: High content quality indicates legitimate posting")
         else:
-            st.error(f"📊 **Statistical Analysis**: {verify_info['statistical_message']}")
+            st.error("📊 **Analysis**: Poor content quality is a strong fraud indicator")
     
     with tab2:
         red_flags = explanation.get('red_flags', [])
@@ -202,140 +217,82 @@ def render_detailed_analysis(result: Dict[str, Any]) -> None:
             st.info("Limited positive indicators found.")
     
     with tab4:
-        # Job Poster Trust Analysis
-        render_job_poster_analysis(job_data)
-    
-    with tab5:
         # Enhanced Feature Analysis with interactive charts
         render_feature_importance_analysis(result)
     
-    with tab6:
-        # Enhanced job details with trust indicators
+    with tab5:
+        # Enhanced job details with content focus
         render_enhanced_job_details(job_data)
 
 
-def render_job_poster_analysis(job_data: Dict[str, Any]) -> None:
-    """Render comprehensive job poster trust analysis with verification features."""
-    st.markdown("### 👤 Job Poster Verification Analysis")
+def render_content_quality_analysis(job_data: Dict[str, Any]) -> None:
+    """Render comprehensive content quality analysis."""
+    st.markdown("### 📝 Content Quality Analysis")
     
-    company_name = (job_data.get('company') or job_data.get('company_name') or 
-                   job_data.get('company_name') or 'Unknown')
+    # Get content quality metrics
+    content_score = job_data.get('content_quality_score', 0.0)
+    company_score = job_data.get('company_legitimacy_score', 0.0)
+    contact_risk = job_data.get('contact_risk_score', 0.0)
     
-    # Use centralized verification service
-    from ...services.verification_service import VerificationService
-    verification_service = VerificationService()
+    # Create content quality dashboard
+    st.markdown("#### 📊 Quality Indicators")
     
-    # Get verification features and score from service
-    verification_summary = verification_service.get_verification_summary(job_data)
-    poster_score = verification_summary['score']
-    verification_features = verification_summary['features']
+    col1, col2, col3 = st.columns(3)
     
-    # Trust score calculation enhanced with verification
-    base_trust_score = calculate_company_trust_score(company_name)
-    # Boost trust score based on verification features
-    verification_boost = poster_score * 20  # Each verification adds 20 points
-    trust_score = min(base_trust_score + verification_boost, 100)
-    
-    # Create enhanced trust analysis dashboard
-    st.markdown("#### 🏆 Verification Features (Perfect Fraud Predictors)")
-    
-    # Individual verification status using service
-    badges = verification_service.get_verification_badges(job_data)
-    col1, col2, col3, col4 = st.columns(4)
-    
-    for i, (col, badge) in enumerate(zip([col1, col2, col3, col4], badges)):
-        with col:
-            status_color = "#4CAF50" if badge['verified'] else "#F44336"
-            status_icon = badge['icon'] if badge['verified'] else "❌"
-            
-            st.markdown(f"""
-            <div style="text-align: center; padding: 10px; border: 2px solid {status_color}; 
-                        border-radius: 8px; background: {status_color}15;">
-                <div style="font-size: 2rem;">{status_icon}</div>
-                <div style="color: {status_color}; font-weight: bold;">{badge['label']}</div>
-                <div style="font-size: 0.9rem;">{badge['description']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Verification summary
-    st.markdown("---")
-    st.markdown("#### 📊 Verification Summary")
-    
-    col5, col6 = st.columns(2)
-    
-    with col5:
-        # Enhanced trust score gauge
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
-            value=trust_score,
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': f"🏆 Enhanced Trust Score ({poster_score}/4 verified)"},
-            delta={'reference': 70},
-            gauge={
-                'axis': {'range': [None, 100]},
-                'bar': {'color': get_trust_color(trust_score)},
-                'steps': [
-                    {'range': [0, 40], 'color': "#ffebee"},
-                    {'range': [40, 70], 'color': "#fff3e0"},
-                    {'range': [70, 100], 'color': "#e8f5e8"}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 90
-                }
-            }
-        ))
-        fig.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20))
-        st.plotly_chart(fig, width='stretch')
-    
-    with col6:
-        # Verification analysis
-        st.markdown("#### 🔍 Fraud Risk Assessment")
-        
-        # Use centralized risk assessment logic
-        risk_assessment = verify_info['risk_assessment']
-        risk_color = verify_info['color']
-        risk_icon = verify_info['risk_icon']
-        
+    with col1:
+        # Content Quality Score
+        color = "#4CAF50" if content_score >= 0.7 else "#FF9800" if content_score >= 0.4 else "#F44336"
         st.markdown(f"""
-        <div style="background: {risk_color}15; border-left: 5px solid {risk_color}; 
-                    padding: 15px; border-radius: 5px; margin: 10px 0;">
-            <div style="font-size: 1.5rem; margin-bottom: 10px;">{risk_icon}</div>
-            <div style="color: {risk_color}; font-weight: bold; font-size: 1.1rem;">
-                {risk_assessment}
-            </div>
-            <div style="margin-top: 10px; font-size: 0.9rem;">
-                Based on {poster_score}/4 verification features
-            </div>
+        <div style="text-align: center; padding: 15px; border: 2px solid {color}; 
+                    border-radius: 8px; background: {color}15;">
+            <div style="font-size: 2rem;">📝</div>
+            <div style="color: {color}; font-weight: bold;">Content Quality</div>
+            <div style="font-size: 1.5rem; color: {color};">{content_score:.2f}</div>
         </div>
         """, unsafe_allow_html=True)
-        
-        # Key insight
-        st.info("""
-        💡 **Key Insight**: Our analysis shows that real job postings have 2-4 verification 
-        features, while fraudulent postings typically have 0-1 verification features. 
-        This makes verification features the most reliable fraud indicators.
-        """)
+    
+    with col2:
+        # Company Legitimacy
+        color = "#4CAF50" if company_score >= 0.7 else "#FF9800" if company_score >= 0.4 else "#F44336"
+        st.markdown(f"""
+        <div style="text-align: center; padding: 15px; border: 2px solid {color}; 
+                    border-radius: 8px; background: {color}15;">
+            <div style="font-size: 2rem;">🏢</div>
+            <div style="color: {color}; font-weight: bold;">Company Score</div>
+            <div style="font-size: 1.5rem; color: {color};">{company_score:.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        # Contact Risk (inverse - lower is better)
+        color = "#F44336" if contact_risk >= 0.7 else "#FF9800" if contact_risk >= 0.4 else "#4CAF50"
+        st.markdown(f"""
+        <div style="text-align: center; padding: 15px; border: 2px solid {color}; 
+                    border-radius: 8px; background: {color}15;">
+            <div style="font-size: 2rem;">📞</div>
+            <div style="color: {color}; font-weight: bold;">Contact Risk</div>
+            <div style="font-size: 1.5rem; color: {color};">{contact_risk:.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def render_feature_importance_analysis(result: Dict[str, Any]) -> None:
-    """Render interactive feature importance analysis with verification features highlighted."""
-    st.markdown("### 📊 Enhanced Feature Importance Analysis")
+    """Render interactive feature importance analysis with content features highlighted."""
+    st.markdown("### 📊 Content-Focused Feature Importance Analysis")
     
-    # Enhanced feature importance data with verification features prioritized
+    # Content-focused feature importance data
     features = [
-        "Verification Score (poster_verified + poster_photo + poster_active + poster_experience)",
-        "Individual Verifications", 
-        "Language-Aware Suspicious Keywords", 
-        "Language-Aware Grammar Score", 
-        "Text Quality Score",
-        "Company Trust", 
-        "Language-Aware Urgency Indicators", 
-        "Contact Patterns"
+        "Content Quality Score",
+        "Company Legitimacy Score", 
+        "Professional Language Score", 
+        "Contact Risk Score", 
+        "Suspicious Keywords Count",
+        "Description Length Score", 
+        "Job Structure Completeness", 
+        "Company Information Completeness"
     ]
-    importance = [1.0, 0.85, 0.65, 0.58, 0.52, 0.48, 0.42, 0.38]
-    colors = ['#4CAF50', '#8BC34A', '#FF5722', '#FF9800', '#FFC107', '#FFEB3B', '#CDDC39', '#009688']
+    importance = [1.0, 0.85, 0.70, 0.65, 0.58, 0.50, 0.45, 0.40]
+    colors = ['#4CAF50', '#8BC34A', '#2196F3', '#FF5722', '#FF9800', '#FFC107', '#CDDC39', '#009688']
     
     # Create horizontal bar chart
     fig = go.Figure(go.Bar(
@@ -348,7 +305,7 @@ def render_feature_importance_analysis(result: Dict[str, Any]) -> None:
     ))
     
     fig.update_layout(
-        title="🎯 Enhanced Feature Impact on Fraud Detection (Verification-First)",
+        title="🎯 Feature Impact on Fraud Detection (Content-Focused)",
         xaxis_title="Importance Score",
         height=450,
         margin=dict(l=20, r=20, t=40, b=20)
@@ -356,74 +313,88 @@ def render_feature_importance_analysis(result: Dict[str, Any]) -> None:
     
     st.plotly_chart(fig, width='stretch')
     
-    # Enhanced feature explanations
-    st.markdown("#### 💡 Enhanced Feature Explanations")
+    # Content-focused feature explanations
+    st.markdown("#### 💡 Content Feature Explanations")
     
     explanations = {
-        "Verification Score": "🏆 **PERFECT PREDICTOR (100% accuracy)**: Real jobs have 2-4 verifications, fake jobs have 0-1",
-        "Individual Verifications": "🔍 Each verification feature (verified, photo, active, experience) individually",
-        "Language-Aware Suspicious Keywords": "🌐 Detects fraud keywords in both Arabic and English contexts",
-        "Language-Aware Grammar Score": "📝 Analyzes grammar quality specific to Arabic or English text",
-        "Text Quality Score": "📊 Overall text professionalism and completeness assessment",
-        "Company Trust": "🏢 Company reputation and verification status analysis",
-        "Language-Aware Urgency Indicators": "⏰ Urgency pressure detection in native language context",
-        "Contact Patterns": "📧 Suspicious contact methods and communication patterns"
+        "Content Quality Score": "📝 Overall job posting professionalism, completeness, and structure quality",
+        "Company Legitimacy Score": "🏢 Company reputation, website presence, and business verification indicators",
+        "Professional Language Score": "💼 Use of professional terminology and business language patterns",
+        "Contact Risk Score": "📞 Analysis of contact methods for suspicious patterns (messaging apps vs professional channels)",
+        "Suspicious Keywords Count": "🚨 Detection of fraud-related terms in both Arabic and English",
+        "Description Length Score": "📄 Job description completeness and detail level assessment",
+        "Job Structure Completeness": "📋 Presence of standard job posting elements (requirements, salary, etc.)",
+        "Company Information Completeness": "🏢 Completeness of company profile and business information"
     }
     
     for feature, explanation in explanations.items():
         with st.expander(f"🔍 {feature}"):
             st.markdown(explanation)
             
-            # Special highlight for verification features
-            if "Verification" in feature:
+            # Special highlight for content features
+            if "Content Quality" in feature:
                 st.success("""
-                **Why Verification Features Are So Powerful:**
-                - Real job postings: 96.7% have 2+ verifications
-                - Fraudulent postings: 94.5% have 0-1 verifications
-                - This creates a near-perfect separation between legitimate and fake postings
+                **Why Content Quality Is So Important:**
+                - Legitimate postings: Professional language, complete descriptions, proper structure
+                - Fraudulent postings: Poor grammar, incomplete information, urgent language
+                - Content analysis is reliable and doesn't depend on profile access
                 """)
 
 
 def render_enhanced_job_details(job_data: Dict[str, Any]) -> None:
-    """Render enhanced job details with trust indicators."""
+    """Render enhanced job details with content focus."""
     st.markdown("### 📋 Enhanced Job Details")
     
     # Get comprehensive job data
     title = (job_data.get('title') or job_data.get('job_title') or 
-             job_data.get('name') or 'N/A')
-    company = (job_data.get('company') or job_data.get('company_name') or 
-               job_data.get('company_name') or 'N/A')
+             job_data.get('name') or '')
+    company = (job_data.get('company') or job_data.get('company_name') or '')
     location = (job_data.get('location') or job_data.get('region') or 
-                job_data.get('city') or 'N/A')
+                job_data.get('city') or '')
     
     # Create enhanced detail cards
-    st.markdown("""
+    st.markdown(f"""
     <div style="background: white; padding: 20px; border-radius: 10px; 
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); margin-bottom: 15px;">
         <h4 style="color: #333; margin: 0 0 15px 0;">💼 Position Information</h4>
         <div style="grid-template-columns: 1fr 1fr; display: grid; gap: 15px;">
-            <div><strong>Job Title:</strong><br>{}</div>
-            <div><strong>Company:</strong><br>{}</div>
+            <div><strong>Job Title:</strong><br>{title}</div>
+            <div><strong>Company:</strong><br>{company}</div>
         </div>
-        <div style="margin-top: 15px;"><strong>Location:</strong> {}</div>
+        <div style="margin-top: 15px;"><strong>Location:</strong> {location}</div>
     </div>
-    """.format(title, company, location), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+    
+    # Content quality indicators
+    content_quality = job_data.get('content_quality_score', 0.0)
+    company_score = job_data.get('company_legitimacy_score', 0.0)
+    
+    st.markdown(f"""
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; 
+                border-left: 4px solid #6c757d;">
+        <h5 style="color: #495057; margin: 0 0 10px 0;">📊 Content Analysis</h5>
+        <p style="margin: 0; color: #6c757d;">
+            <strong>Content Quality:</strong> {content_quality:.2f}/1.0<br>
+            <strong>Company Legitimacy:</strong> {company_score:.2f}/1.0
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Scraping metadata
     scraping_method = job_data.get('scraping_method', 'unknown')
     scraped_at = job_data.get('scraped_at', 'Unknown')
     
     analysis_time = scraped_at[:19] if scraped_at != 'Unknown' else 'Unknown'
-    st.markdown("""
+    st.markdown(f"""
     <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; 
-                border-left: 4px solid #6c757d;">
+                border-left: 4px solid #6c757d; margin-top: 15px;">
         <h5 style="color: #495057; margin: 0 0 10px 0;">🔧 Technical Details</h5>
         <p style="margin: 0; color: #6c757d;">
-            <strong>Extraction Method:</strong> {}<br>
-            <strong>Analysis Time:</strong> {}
+            <strong>Extraction Method:</strong> {scraping_method}<br>
+            <strong>Analysis Time:</strong> {analysis_time}
         </p>
     </div>
-    """.format(scraping_method, analysis_time), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 
 def render_confidence_gauge(confidence: float) -> None:

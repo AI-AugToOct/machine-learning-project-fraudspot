@@ -1,0 +1,19 @@
+# Model Comparison Report (Realistic Metrics)
+
+Generated: 2025-09-04 14:37:39
+
+**Dataset Context**: 4.5% fraud rate (severely imbalanced)
+**Baseline**: Random classifier would achieve 95.5% accuracy
+
+| Model | F1 | Balanced Acc | PR-AUC | MCC | Precision | Recall | Accuracy* |
+|-------|----|--------------|---------|----|-----------|--------|----------|
+| random_forest | 0.736 | 0.954 | 0.921 | 0.740 | 0.607 | 0.936 | 0.970 |
+| logistic_regression | 0.347 | 0.892 | 0.707 | 0.405 | 0.212 | 0.948 | 0.840 |
+| svm | 0.350 | 0.877 | 0.000 | 0.399 | 0.217 | 0.908 | 0.849 |
+| naive_bayes | 0.208 | 0.820 | 0.561 | 0.273 | 0.116 | 0.994 | 0.662 |
+
+*Accuracy is misleading with imbalanced data - focus on F1, Balanced Accuracy, and PR-AUC
+
+## ⚠️ Warnings
+
+- **random_forest**: ⚠️  High accuracy (97.0%) with only 4.5% fraud - check for overfitting!

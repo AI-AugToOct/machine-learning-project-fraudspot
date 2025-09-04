@@ -18,20 +18,23 @@ Version: 1.0.0 - DRY Consolidation
 """
 
 from .constants import DataConstants, FraudKeywords, ModelConstants, ScrapingConstants, UIConstants
+from .data_model import DataRange, FraudResult, JobPostingData
 from .data_processor import DataProcessor, prepare_scraped_data_for_ml
-from .feature_engine import FeatureEngine, generate_features_for_single_job
-from .fraud_detector import FraudDetector, detect_fraud
+from .feature_engine import FeatureEngine
+from .fraud_pipeline import FraudDetectionPipeline, detect_fraud
 
 # Export all core functionality
 __all__ = [
     # Core classes
     'DataProcessor',
     'FeatureEngine', 
-    'FraudDetector',
+    'FraudDetectionPipeline',
+    'JobPostingData',
+    'FraudResult',
+    'DataRange',
     
     # Convenience functions
     'prepare_scraped_data_for_ml',
-    'generate_features_for_single_job',
     'detect_fraud',
     
     # Constants

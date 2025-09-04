@@ -8,6 +8,7 @@ Version: 3.0.0 - DRY Consolidation
 import logging
 from typing import Any, Dict, List, Union
 
+import numpy as np
 import pandas as pd
 
 from ..core import DataConstants, ModelConstants
@@ -29,9 +30,7 @@ class SerializationService:
     
     def __init__(self):
         """Initialize the serialization service."""
-        # Initialize verification service for centralized verification logic
-        from .verification_service import VerificationService
-        self.verification_service = VerificationService()
+        # No external services needed
         
         logger.info("SerializationService initialized")
     
@@ -100,8 +99,8 @@ class SerializationService:
             if df.empty:
                 return self._create_empty_ml_dataframe()
             
-            # Use core feature engine for complete feature generation
-            from ..core import FeatureEngine
+            # Use core feature engine directly
+            from ..core.feature_engine import FeatureEngine
             feature_engine = FeatureEngine()
             
             # Process each row to ensure complete feature set
@@ -113,8 +112,8 @@ class SerializationService:
                     processed_rows.append(features_df.iloc[0].to_dict())
                 except Exception as e:
                     logger.error(f"Failed to process row: {str(e)}")
-                    # Add minimal feature set to prevent failure
-                    processed_rows.append(self._create_minimal_ml_record(row.to_dict()))
+                    # Skip rows that can't be processed - no fallback values
+                    continue
             
             # Create final DataFrame
             ml_df = pd.DataFrame(processed_rows)
@@ -145,31 +144,22 @@ class SerializationService:
             # Use core data processor
             ml_ready_data = prepare_scraped_data_for_ml(raw_data)
             
-            # Use verification service to extract and validate verification features
-            verification_features = self.verification_service.extract_verification_features(ml_ready_data)
-            
-            # Update ml_ready_data with verified features
-            ml_ready_data.update(verification_features)
-            
-            # Generate complete feature set
-            from ..core import FeatureEngine
+            # Generate complete feature set directly
+            from ..core.feature_engine import FeatureEngine
             feature_engine = FeatureEngine()
             features_df = feature_engine.generate_complete_feature_set(ml_ready_data)
             
-            # Log verification status using centralized service
-            poster_score = self.verification_service.calculate_verification_score(ml_ready_data)
-            logger.info(f"Verification fields ready - poster_score: {poster_score}/4 "
-                       f"(verified:{verification_features['poster_verified']}, "
-                       f"photo:{verification_features['poster_photo']}, "
-                       f"exp:{verification_features['poster_experience']}, "
-                       f"active:{verification_features['poster_active']})")
+            # Log content quality status
+            content_score = ml_ready_data.get('content_quality_score', 0)
+            logger.info(f"Content quality ready - score: {content_score:.2f}")
             
             # Return as dictionary
             return features_df.iloc[0].to_dict()
             
         except Exception as e:
             logger.error(f"Single prediction preparation failed: {str(e)}")
-            return self._create_minimal_ml_record(raw_data)
+            # Fail properly instead of returning default values
+            raise ValueError(f"Cannot prepare prediction data: {str(e)}")
     
     def validate_ml_format(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
@@ -259,7 +249,7 @@ class SerializationService:
                 if col in DataConstants.BINARY_COLUMNS or col in DataConstants.ENCODED_COLUMNS:
                     df[col] = 0
                 elif col in DataConstants.SCORE_COLUMNS:
-                    df[col] = 0.5 if 'score' in col else 0.0
+                    df[col] = np.nan  # ML-FIRST: Use NaN, not defaults
                 elif col == 'title_word_count':
                     df[col] = 0
                 else:
@@ -280,10 +270,10 @@ class SerializationService:
         float_columns = DataConstants.SCORE_COLUMNS
         for col in float_columns:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.5).astype(float)
-                # Ensure scores are in [0, 1] range
+                df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)  # Keep NaN values
+                # Only clip valid values, preserve NaN
                 if 'score' in col:
-                    df[col] = df[col].clip(0, 1)
+                    df[col] = df[col].clip(0, 1)  # Clips only non-NaN values
         
         return df
     
@@ -314,8 +304,14 @@ class SerializationService:
     
     def _create_minimal_record(self, original_data: Dict[str, Any], error_message: str) -> Dict[str, Any]:
         """Create minimal record from failed processing."""
-        # Use verification service to get default verification features
-        verification_features = self.verification_service.extract_verification_features({})
+        # Use default verification features
+        verification_features = {
+            'poster_verified': 0,
+            'poster_photo': 0,
+            'poster_experience': 0,
+            'content_quality_score': 0.0,
+            'company_legitimacy_score': 0.0
+        }
         
         minimal_record = {
             'job_title': str(original_data.get('job_title', 'Processing Error')),
@@ -331,26 +327,6 @@ class SerializationService:
         
         return minimal_record
     
-    def _create_minimal_ml_record(self, original_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create minimal ML record with all required columns."""
-        record = {}
-        
-        # Fill all required columns with safe defaults
-        for col in ModelConstants.REQUIRED_FEATURE_COLUMNS:
-            if col in DataConstants.BINARY_COLUMNS or col in DataConstants.ENCODED_COLUMNS:
-                record[col] = 0
-            elif col in DataConstants.SCORE_COLUMNS:
-                record[col] = 0.5 if 'score' in col else 0.0
-            elif col == 'title_word_count':
-                record[col] = 0
-            else:
-                record[col] = str(original_data.get(col, ''))
-        
-        # Ensure verification features are properly set using verification service
-        verification_features = self.verification_service.extract_verification_features(original_data)
-        record.update(verification_features)
-        
-        return record
     
     def _create_empty_ml_dataframe(self) -> pd.DataFrame:
         """Create empty DataFrame with all required ML columns."""
